@@ -262,7 +262,7 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& params)
 
         Json::Value values;
         values["items"] = ChannelDataCache[channel_id].RowCount;
-        values["last_ts"] = duration_cast<seconds>(ChannelDataCache[channel_id].LastProcessed.time_since_epoch()).count();
+        values["last_ts"] = Json::Int64(duration_cast<seconds>(ChannelDataCache[channel_id].LastProcessed.time_since_epoch()).count());
 
         result["channels"][device_name] = values;
     }
