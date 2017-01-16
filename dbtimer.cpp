@@ -100,7 +100,7 @@ void TMQTTDBLogger::WriteChannel(TChannel &channel_data, TLoggingGroup &group)
     DLOG(DEBUG) << "Resulting channel ID for this request is " << channel_int_id;
 
     static SQLite::Statement insert_row_query(*DB, "INSERT INTO data (device, channel, value, group_id, min, max, \
-                                                    retained, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, strftime(\"%s\", 'now'))");
+                                                    retained, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, strftime(\"%s\", 'now') * 1000)");
 
     insert_row_query.reset();
     insert_row_query.bind(1, device_int_id);
