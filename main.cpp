@@ -57,6 +57,7 @@ TMQTTDBLoggerConfig ParseConfigFile(Json::Value &root)
 
     config.DBFile = root["database"].asString();
     config.Debug = root["debug"].asBool();
+    config.RequestTimeout = chrono::seconds(root.isMember("request_timeout") ? root["request_timeout"].asInt() : DEFAULT_TIMEOUT);
 
     for (const auto& group_item : root["groups"]) {
 

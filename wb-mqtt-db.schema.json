@@ -11,10 +11,20 @@
       "_format": "checkbox",
       "propertyOrder": 1
     },
+
+    "request_timeout": {
+        "type": "integer",
+        "title": "Default request timeout (in seconds)",
+        "description": "Maximum time to process data request (if no such data in RPC request)",
+        "propertyOrder": 2,
+        "minimum": 0,
+        "default": 9
+    },
+
     "groups" : {
         "type" : "array",
         "title" : "Groups",
-        "propertyOrder" : 2,
+        "propertyOrder" : 3,
 
         "items" : {
             "type" : "object",

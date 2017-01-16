@@ -80,6 +80,8 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 #endif
 
+    steady_clock::time_point start_time = steady_clock::now();
+
     Json::Value result;
     int limit = -1;
     long long timestamp_gt = 0;
@@ -87,6 +89,11 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     long long timestamp_lt = 10675199167; // magic?
     int req_ver = 0;
     int min_interval_ms = 0;
+
+    steady_clock::duration timeout = LoggerConfig.RequestTimeout;
+    if (params.isMember("request_timeout")) {
+        timeout = chrono::seconds(params["request_timeout"].asInt());
+    }
 
     if (params.isMember("ver")) {
         req_ver = params["ver"].asInt();
@@ -196,6 +203,11 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
     while (1) {
 
+        // check timeout
+        if (steady_clock::now() - start_time >= LoggerConfig.RequestTimeout) {
+            throw TTimeoutException("get_values");
+        }
+
         if (!get_values_query.executeStep())
             break;
 
@@ -205,35 +217,40 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         }
 
         Json::Value row;
-        row[(req_ver == 1) ? "i" : "uid"] = static_cast<int>(get_values_query.getColumn(0));
+
+        int uid = static_cast<int>(get_values_query.getColumn(0));
 
         if (req_ver == 0) {
+            row["uid"] = uid;
+            
             const TChannelName& channel = channel_names[get_values_query.getColumn(2)];
             row["device"] = channel.Device;
             row["control"] = channel.Control;
         } else if (req_ver == 1) {
+            row["i"] = uid;
             row["c"] = query_channel_ids[get_values_query.getColumn(2)];
         }
 
-        
         // if there are min and max values, send'em too
-        if (get_values_query.getColumn(5).getType() != SQLITE_NULL && req_ver == 1) {
+        if (get_values_query.getColumn(5).getType() != SQLITE_NULL) {
             row["min"] = static_cast<double>(get_values_query.getColumn(5));
             row["max"] = static_cast<double>(get_values_query.getColumn(6));
-            row["v"] = static_cast<double>(get_values_query.getColumn(3));
+            row[(req_ver == 1) ? "v" : "value"] = static_cast<double>(get_values_query.getColumn(3));
         } else { 
             row[(req_ver == 1) ? "v" : "value"] = get_values_query.getColumn(3).getText();
         }
         
         // add retained flag if it is set
-        if (req_ver == 1 && static_cast<int>(get_values_query.getColumn(7)) > 0) {
+        if (static_cast<int>(get_values_query.getColumn(7)) > 0) {
             row["retain"] = true;
         }
 
+        // send timestamp
         row[(req_ver == 1) ? "t" : "timestamp"] = static_cast<long long>(get_values_query.getColumn(4));
+
+        // append element to values list
         result["values"].append(row);
         row_count += 1;
-
     }
 
 

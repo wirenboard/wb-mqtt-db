@@ -10,6 +10,7 @@
 #include "jsoncpp/json/json.h"
 #include  "SQLiteCpp/SQLiteCpp.h"
 
+static const int    DEFAULT_TIMEOUT = 9;
 static const int    WB_DB_VERSION = 3;
 static const float  RingBufferClearThreshold = 0.02; // ring buffer will be cleared on limit * (1 + RingBufferClearThreshold) entries
 static const int    WB_DB_LOOP_TIMEOUT = 10; // loop will be interrupted at least once in this interval (in ms) for
@@ -106,6 +107,7 @@ struct TMQTTDBLoggerConfig
     std::string DBFile;
 
     bool Debug;
+    std::chrono::steady_clock::duration RequestTimeout;
 };
 
 class TMQTTDBLogger: public TMQTTWrapper
@@ -162,4 +164,3 @@ private:
 
     const int DBVersion = WB_DB_VERSION;
 };
-
