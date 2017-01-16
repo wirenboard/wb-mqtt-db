@@ -10,10 +10,15 @@
 #include "jsoncpp/json/json.h"
 #include  "SQLiteCpp/SQLiteCpp.h"
 
-static const int    WB_DB_VERSION = 2;
+static const int    WB_DB_VERSION = 3;
 static const float  RingBufferClearThreshold = 0.02; // ring buffer will be cleared on limit * (1 + RingBufferClearThreshold) entries
 static const int    WB_DB_LOOP_TIMEOUT = 10; // loop will be interrupted at least once in this interval (in ms) for
                                              // DB update event
+
+static const char * DB_BACKUP_FILE_EXTENSION = ".backup";
+inline std::string BackupFileName(const std::string &filename) {
+    return filename + DB_BACKUP_FILE_EXTENSION;
+}
 
 struct TLoggingChannel
 {
@@ -123,12 +128,19 @@ public:
 private:
     void InitDB();
     void CreateTables();
+    void CreateIndices();
     int GetOrCreateChannelId(const TChannelName& channel);
     int GetOrCreateDeviceId(const std::string& device);
     void InitChannelIds();
     void InitDeviceIds();
     void InitGroupIds();
     void InitCaches();
+
+    bool CheckBackupFile();
+    void CreateBackupFile();
+    void RemoveBackupFile();
+    void RestoreBackupFile();
+
     int ReadDBVersion();
     void UpdateDB(int prev_version);
     bool UpdateAccumulator(int channel_id, const std::string &payload);

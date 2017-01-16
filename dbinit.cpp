@@ -1,6 +1,11 @@
 #include "dblogger.h"
 
 #include <logging.h>
+#include <unistd.h>
+
+#include <iostream>
+#include <fstream>
+#include <cstdio>
 
 using namespace std;
 using namespace std::chrono;
@@ -20,26 +25,26 @@ TMQTTDBLogger::~TMQTTDBLogger()
 
 void TMQTTDBLogger::CreateTables()
 {
-    LOG(INFO) << "Creating 'devices' table...";
+    LOG(DEBUG) << "Creating 'devices' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS devices ( "
              "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
              "device VARCHAR(255) UNIQUE "
              " )  ");
 
-    LOG(INFO) << "Creating 'channels' table...";
+    LOG(DEBUG) << "Creating 'channels' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS channels ( "
              "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
              "device VARCHAR(255), "
              "control VARCHAR(255) "
              ")  ");
 
-    LOG(INFO) << "Creating 'groups' table...";
+    LOG(DEBUG) << "Creating 'groups' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS groups ( "
              "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
              "group_id VARCHAR(255) "
              ")  ");
 
-    LOG(INFO) << "Creating 'data' table...";
+    LOG(DEBUG) << "Creating 'data' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS data ("
              "uid INTEGER PRIMARY KEY AUTOINCREMENT, "
              "device INTEGER,"
@@ -53,32 +58,35 @@ void TMQTTDBLogger::CreateTables()
              ")"
             );
 
-    LOG(INFO) << "Creating 'variables' table...";
+    LOG(DEBUG) << "Creating 'variables' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS variables ("
              "name VARCHAR(255) PRIMARY KEY, "
              "value VARCHAR(255) )"
             );
 
-    LOG(INFO) << "Creating 'data_topic' index on 'data' ('channel')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_topic ON data (channel)");
-
-    // NOTE: the following index is a "low quality" one according to sqlite documentation. However, reversing the order of columns results in factor of two decrease in SELECT performance. So we leave it here as it is. 
-    LOG(INFO) << "Creating 'data_topic_timestamp' index on 'data' ('channel', 'timestamp')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, timestamp)");
-
-    LOG(INFO) << "Creating 'data_gid' index on 'data' ('group_id')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_gid ON data (group_id)");
-
-    LOG(INFO) << "Creating 'data_gid_timestamp' index on 'data' ('group_id', 'timestamp')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_gid_timestamp ON data (group_id, timestamp)");
-
     {
-        LOG(INFO) << "Updating database version variable...";
+        LOG(DEBUG) << "Updating database version variable...";
         SQLite::Statement query(*DB, "INSERT OR REPLACE INTO variables (name, value) VALUES ('db_version', ?)");
         query.bind(1, DBVersion);
         query.exec();
     }
 
+}
+
+void TMQTTDBLogger::CreateIndices()
+{
+    LOG(DEBUG) << "Creating 'data_topic' index on 'data' ('channel')";
+    DB->exec("CREATE INDEX IF NOT EXISTS data_topic ON data (channel)");
+
+    // NOTE: the following index is a "low quality" one according to sqlite documentation. However, reversing the order of columns results in factor of two decrease in SELECT performance. So we leave it here as it is. 
+    LOG(DEBUG) << "Creating 'data_topic_timestamp' index on 'data' ('channel', 'timestamp')";
+    DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, timestamp)");
+
+    LOG(DEBUG) << "Creating 'data_gid' index on 'data' ('group_id')";
+    DB->exec("CREATE INDEX IF NOT EXISTS data_gid ON data (group_id)");
+
+    LOG(DEBUG) << "Creating 'data_gid_timestamp' index on 'data' ('group_id', 'timestamp')";
+    DB->exec("CREATE INDEX IF NOT EXISTS data_gid_timestamp ON data (group_id, timestamp)");
 }
 
 void TMQTTDBLogger::InitCaches()
@@ -116,7 +124,7 @@ void TMQTTDBLogger::InitCaches()
         channel_data.RowCount++;
 
         // prepare timestamps
-        auto d = milliseconds(static_cast<long long>(count_channel_query.getColumn(1)) * 1000);
+        auto d = milliseconds(static_cast<long long>(count_channel_query.getColumn(1)));
         auto current_tp = steady_clock::time_point(d);
 
         if (current_tp > channel_data.LastProcessed) {
@@ -233,15 +241,9 @@ void TMQTTDBLogger::UpdateDB(int prev_version)
         
         DB->exec("UPDATE variables SET value=\"1\" WHERE name=\"db_version\"");
 
-        transaction.commit();
-
-        // defragment database
-        DB->exec("VACUUM");
-
     case 1:
         // In versions >= 2, there is a difference in 'data' table:
         // add data.max, data.min columns
-        
         LOG(INFO) << "Convert database from version 1";
 
         DB->exec("ALTER TABLE data ADD COLUMN max VARCHAR(255)");
@@ -254,18 +256,54 @@ void TMQTTDBLogger::UpdateDB(int prev_version)
 
         DB->exec("UPDATE variables SET value=\"2\" WHERE name=\"db_version\"");
 
-        transaction.commit();
+    case 2:
+        LOG(INFO) << "Convert database from version 2";
 
-        DB->exec("VACUUM");
+        // save old data table
+        DB->exec("ALTER TABLE data RENAME TO data_old");
+
+        // create new data table
+        DB->exec("CREATE TABLE data ("
+	        "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
+	        "device INTEGER,"
+	        "channel INTEGER,"
+	        "value VARCHAR(255),"
+	        "timestamp INTEGER DEFAULT(0),"
+	        "group_id INTEGER,"
+	        "max VARCHAR(255),"
+	        "min VARCHAR(255),"
+	        "retained INTEGER"
+        ")");
+
+        // copy all data casting timestamps
+        DB->exec("INSERT INTO data "
+            "SELECT uid, device, channel, value, "
+            "CAST((timestamp - 2440587.5) * 86400000 AS INTEGER), group_id, max, min, retained FROM data_old"
+        );
+
+        // drop old data table
+        DB->exec("DROP TABLE data_old");
+
+        DB->exec("UPDATE variables SET value=\"3\" WHERE name=\"db_version\"");
+
         break;
 
     default:
         throw TBaseException("Unsupported DB version. Please consider deleting DB file.");
     }
+
+    transaction.commit();
+    DB->exec("VACUUM");
 }
 
 void TMQTTDBLogger::InitDB()
 {
+    // check if backup file is present; if so, we should try to repair DB
+    if (CheckBackupFile()) {
+        LOG(WARN) << "Something went wrong last time, restoring old debug file";
+        RestoreBackupFile();
+    }
+
     DB.reset(new SQLite::Database(LoggerConfig.DBFile, SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE));
 
     if (!DB->tableExists("data")) {
@@ -278,12 +316,16 @@ void TMQTTDBLogger::InitDB()
             throw TBaseException("Database file is created by newer version of wb-mqtt-db");
         } else if (file_db_version < DBVersion) {
             LOG(WARN) << "Old database format found, trying to update...";
+            CreateBackupFile();
             UpdateDB(file_db_version);
         } else {
             LOG(INFO) << "Creating tables if necessary";
             CreateTables();
         }
     }
+
+    LOG(INFO) << "Create indices if necessary";
+    CreateIndices();
 
     VLOG(0) << "Getting internal ids for devices and channels";
     InitDeviceIds();
@@ -300,5 +342,63 @@ void TMQTTDBLogger::InitDB()
     DB->exec("ANALYZE sqlite_master");
 
     VLOG(0) << "DB initialization is done";
+
+    if (CheckBackupFile()) {
+        RemoveBackupFile();
+    }
 }
 
+/**
+ * Check if DB backup file exists
+ */
+bool TMQTTDBLogger::CheckBackupFile()
+{
+    string backup_file = LoggerConfig.DBFile + DB_BACKUP_FILE_EXTENSION;
+    struct stat buffer;
+
+    if (stat(backup_file.c_str(), &buffer) < 0) {
+        // TODO: throw something about error
+        return false;
+    }
+
+    if (S_ISREG(buffer.st_mode)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static void CopyFile(const string &from, const string &to)
+{
+    ifstream src(from, std::ios::binary);
+    ofstream dst(to, std::ios::binary);
+
+    dst << src.rdbuf();
+}
+
+/**
+ * Create DB backup file from existing
+ */
+void TMQTTDBLogger::CreateBackupFile()
+{
+    LOG(INFO) << "Creating backup file for DB";
+    CopyFile(LoggerConfig.DBFile, BackupFileName(LoggerConfig.DBFile));
+}
+
+/**
+ * Restore backup file
+ */
+void TMQTTDBLogger::RestoreBackupFile()
+{
+    LOG(INFO) << "Restoring detected backup file for DB";
+    CopyFile(BackupFileName(LoggerConfig.DBFile), LoggerConfig.DBFile);
+}
+
+/**
+ * Remove backup file
+ */
+void TMQTTDBLogger::RemoveBackupFile()
+{
+    LOG(INFO) << "Removing backup file";
+    std::remove(BackupFileName(LoggerConfig.DBFile).c_str());
+}

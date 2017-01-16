@@ -120,7 +120,8 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         }
     }
 
-
+    timestamp_gt *= 1000;
+    timestamp_lt *= 1000;
 
     if (! params.isMember("channels"))
         throw TBaseException("no channels specified");
@@ -152,7 +153,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
 
     if (min_interval_ms > 0) {
-        get_values_query_str +=  " GROUP BY ROUND( timestamp * ? / 86400) ";
+        get_values_query_str +=  " GROUP BY ROUND( timestamp * ? / 86400000) ";
     }
 
     get_values_query_str += " ORDER BY uid ASC LIMIT ?";
@@ -229,7 +230,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
             row["retain"] = true;
         }
 
-        row[(req_ver == 1) ? "t" : "timestamp"] = static_cast<double>(get_values_query.getColumn(4));
+        row[(req_ver == 1) ? "t" : "timestamp"] = static_cast<long long>(get_values_query.getColumn(4)) / 1000;
         result["values"].append(row);
         row_count += 1;
 
