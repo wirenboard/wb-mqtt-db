@@ -160,7 +160,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
 
     if (min_interval_ms > 0) {
-        get_values_query_str +=  " GROUP BY (timestamp * ? / 86400000) ";
+        get_values_query_str +=  " GROUP BY (timestamp * ? / 86400000), channel ";
     }
 
     get_values_query_str += " ORDER BY uid ASC LIMIT ?";
