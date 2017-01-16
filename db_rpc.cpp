@@ -132,10 +132,10 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     string get_values_query_str;
 
     if (min_interval_ms > 0)
-        get_values_query_str = "SELECT uid, device, channel, AVG(value), timestamp, MIN(min), MAX(max), \
+        get_values_query_str = "SELECT uid, device, channel, AVG(value), timestamp / 1000, MIN(min), MAX(max), \
                                 retained  FROM data INDEXED BY data_topic_timestamp WHERE ";
     else
-        get_values_query_str = "SELECT uid, device, channel, value, timestamp, min, max, \
+        get_values_query_str = "SELECT uid, device, channel, value, timestamp / 1000, min, max, \
                                 retained FROM data INDEXED BY data_topic_timestamp WHERE ";
 
     if (!params["channels"].empty()) {
@@ -153,7 +153,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
 
     if (min_interval_ms > 0) {
-        get_values_query_str +=  " GROUP BY ROUND( timestamp * ? / 86400000) ";
+        get_values_query_str +=  " GROUP BY (timestamp * ? / 86400000) ";
     }
 
     get_values_query_str += " ORDER BY uid ASC LIMIT ?";
@@ -230,7 +230,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
             row["retain"] = true;
         }
 
-        row[(req_ver == 1) ? "t" : "timestamp"] = static_cast<long long>(get_values_query.getColumn(4)) / 1000;
+        row[(req_ver == 1) ? "t" : "timestamp"] = static_cast<long long>(get_values_query.getColumn(4));
         result["values"].append(row);
         row_count += 1;
 
