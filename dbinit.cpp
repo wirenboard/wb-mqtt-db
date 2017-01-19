@@ -101,7 +101,7 @@ void TMQTTDBLogger::InitCaches()
     // init channel counter cache
     // init channel last state values
     
-    LOG(INFO) << "Fill ChannelDataCache.RowCount, ChannelDataCache.LastProcessed, ChanneldDataCache.LastValue...";
+    LOG(INFO) << "Fill ChannelDataCache.RowCount, ChannelDataCache.LastProcessed, ChannelDataCache.LastValue...";
     /* SQLite::Statement count_channel_query(*DB, "SELECT COUNT(rowid) as cnt, MAX(timestamp) AS ts, value, channel \ */
     /*                                             FROM data GROUP BY channel ORDER BY timestamp DESC"); */
     /* while (count_channel_query.executeStep()) { */
@@ -300,7 +300,7 @@ void TMQTTDBLogger::InitDB()
 {
     // check if backup file is present; if so, we should try to repair DB
     if (CheckBackupFile()) {
-        LOG(WARN) << "Something went wrong last time, restoring old debug file";
+        LOG(WARN) << "Something went wrong last time, restoring old backup file";
         RestoreBackupFile();
     }
 
