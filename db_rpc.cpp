@@ -205,7 +205,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
         // check timeout
         if (steady_clock::now() - start_time >= LoggerConfig.RequestTimeout) {
-            throw TTimeoutException("get_values");
+            throw TRequestTimeoutException("get_values");
         }
 
         if (!get_values_query.executeStep())
