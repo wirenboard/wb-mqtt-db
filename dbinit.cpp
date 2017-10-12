@@ -10,11 +10,10 @@
 using namespace std;
 using namespace std::chrono;
 
-TMQTTDBLogger::TMQTTDBLogger (const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config)
-    : TMQTTWrapper(mqtt_config)
+TMQTTDBLogger::TMQTTDBLogger (const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config, string prefix)
+    : TMQTTPrefixedWrapper(move(prefix), mqtt_config)
     , LoggerConfig(config)
 {
-
     InitDB();
     Connect();
 }
