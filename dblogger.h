@@ -110,10 +110,10 @@ struct TMQTTDBLoggerConfig
     std::chrono::steady_clock::duration RequestTimeout;
 };
 
-class TMQTTDBLogger: public TMQTTWrapper
+class TMQTTDBLogger: public TMQTTPrefixedWrapper
 {
 public:
-    TMQTTDBLogger(const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config);
+    TMQTTDBLogger(const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config, std::string prefix = "");
     ~TMQTTDBLogger();
 
     void OnConnect(int rc);

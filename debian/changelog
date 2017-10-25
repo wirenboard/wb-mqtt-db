@@ -1,3 +1,10 @@
+wb-mqtt-db (1.7) stable; urgency=medium
+
+  * add MQTT topic prefix support (new command line arg: -T <topic prefix>)
+  * add MQTT authentication support (new command line args: -u <MQTT user> -P <password>)
+
+ -- Islam Boziev <i.boziev@wirenboard.ru>  Thu, 12 Oct 2017 16:01:20 +0300
+
 wb-mqtt-db (1.6.5) stable; urgency=medium
 
   * Change timestamps format to integers

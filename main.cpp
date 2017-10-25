@@ -119,10 +119,11 @@ int main (int argc, char *argv[])
     mqtt_config.Host = "localhost";
     mqtt_config.Port = 1883;
     string config_fname;
+    string mqtt_prefix;
     int c;
     int verbose_level = 0;
 
-    while ((c = getopt(argc, argv, "hp:H:c:T:v")) != -1) {
+    while ((c = getopt(argc, argv, "hp:H:c:T:vu:P:")) != -1) {
         switch (c) {
         case 'p' :
             /* VLOG(2) << "Option p with value " << optarg; */
@@ -143,6 +144,18 @@ int main (int argc, char *argv[])
             verbose_level++;
             break;
 
+        case 'T':
+            mqtt_prefix = optarg;
+            break;
+
+        case 'u':
+            mqtt_config.User = optarg;
+            break;
+        
+        case 'P':
+            mqtt_config.Password = optarg;
+            break;
+
         case '?':
             /* LOG(WARNING) << "?? Getopt returned character code 0%o ??" << static_cast<char>(c); */
         case 'h':
@@ -150,10 +163,13 @@ int main (int argc, char *argv[])
         default:
             printf("Usage:\n wb-mqtt-db [options] [mask]\n");
             printf("Options:\n");
-            printf("\t-p PORT   \t\t\t set to what port wb-mqtt-db should connect (default: 1883)\n");
-            printf("\t-H IP     \t\t\t set to what IP wb-mqtt-db should connect (default: localhost)\n");
-            printf("\t-c config \t\t\t config file\n");
-            printf("\t-v        \t\t\t verbose output to stderr (may be -v -v or -v -v -v also)\n");
+            printf("\t-p PORT     \t\t\t set to what port wb-mqtt-db should connect (default: 1883)\n");
+            printf("\t-H IP       \t\t\t set to what IP wb-mqtt-db should connect (default: localhost)\n");
+            printf("\t-c config   \t\t\t config file\n");
+            printf("\t-v          \t\t\t verbose output to stderr (may be -v -v or -v -v -v also)\n");
+            printf("\t-u USER     \t\t\t MQTT user (optional)\n");
+            printf("\t-P PASSWORD \t\t\t MQTT user password (optional)\n");
+            printf("\t-T prefix   \t\t\t MQTT topic prefix (optional)\n");
 
             return 0;
         }
@@ -249,7 +265,7 @@ int main (int argc, char *argv[])
     }
 
     mosqpp::lib_init();
-    std::shared_ptr<TMQTTDBLogger> mqtt_db_logger(new TMQTTDBLogger(mqtt_config, config));
+    std::shared_ptr<TMQTTDBLogger> mqtt_db_logger(new TMQTTDBLogger(mqtt_config, config, move(mqtt_prefix)));
 
     try {
         mqtt_db_logger->Init();
