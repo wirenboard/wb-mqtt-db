@@ -10,11 +10,13 @@
 using namespace std;
 using namespace std::chrono;
 
-TMQTTDBLogger::TMQTTDBLogger (const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config, string prefix)
+TMQTTDBLogger::TMQTTDBLogger (const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config,
+                              string prefix, string user, string password)
     : TMQTTPrefixedWrapper(move(prefix), mqtt_config)
     , LoggerConfig(config)
 {
     InitDB();
+    Authenticate(user, password);
     Connect();
 }
 
@@ -77,7 +79,7 @@ void TMQTTDBLogger::CreateIndices()
     LOG(DEBUG) << "Creating 'data_topic' index on 'data' ('channel')";
     DB->exec("CREATE INDEX IF NOT EXISTS data_topic ON data (channel)");
 
-    // NOTE: the following index is a "low quality" one according to sqlite documentation. However, reversing the order of columns results in factor of two decrease in SELECT performance. So we leave it here as it is. 
+    // NOTE: the following index is a "low quality" one according to sqlite documentation. However, reversing the order of columns results in factor of two decrease in SELECT performance. So we leave it here as it is.
     LOG(DEBUG) << "Creating 'data_topic_timestamp' index on 'data' ('channel', 'timestamp')";
     DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, timestamp)");
 
@@ -99,16 +101,16 @@ void TMQTTDBLogger::InitCaches()
 
     // init channel counter cache
     // init channel last state values
-    
+
     LOG(INFO) << "Fill ChannelDataCache.RowCount, ChannelDataCache.LastProcessed, ChannelDataCache.LastValue...";
     /* SQLite::Statement count_channel_query(*DB, "SELECT COUNT(rowid) as cnt, MAX(timestamp) AS ts, value, channel \ */
     /*                                             FROM data GROUP BY channel ORDER BY timestamp DESC"); */
     /* while (count_channel_query.executeStep()) { */
     /*     auto& channel_data = ChannelDataCache[count_channel_query.getColumn(3)]; */
-        
+
     /*     auto d = milliseconds(static_cast<long long>(count_channel_query.getColumn(1)) * 1000); */
     /*     auto current_tp = steady_clock::time_point(d); */
-        
+
     /*     channel_data.RowCount = count_channel_query.getColumn(0); */
     /*     channel_data.LastProcessed = current_tp; */
     /*     channel_data.LastValue = static_cast<const char *>(count_channel_query.getColumn(2)); */
@@ -237,7 +239,7 @@ void TMQTTDBLogger::UpdateDB(int prev_version)
                   "LEFT JOIN groups ON tmp.group_id = groups.group_id ");
 
         DB->exec("DROP TABLE tmp");
-        
+
         DB->exec("UPDATE variables SET value=\"1\" WHERE name=\"db_version\"");
 
     case 1:

@@ -1,3 +1,9 @@
+wb-mqtt-db (1.7.1) stable; urgency=medium
+
+  * update libwbmqtt version
+
+ -- Islam Boziev <i.boziev@wirenboard.ru>  Thu, 23 Nov 2017 15:24:03 +0300
+
 wb-mqtt-db (1.7) stable; urgency=medium
 
   * add MQTT topic prefix support (new command line arg: -T <topic prefix>)

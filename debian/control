@@ -3,10 +3,10 @@ Maintainer: Evgeny Boger <boger@contactless.ru>
 Section: misc
 Priority: optional
 Standards-Version: 3.9.2
-Build-Depends: debhelper (>= 9), pkg-config, g++, libjsoncpp-dev, libmosquittopp-dev, libmosquitto-dev, libsqlite3-dev, liblog4cpp5-dev, libwbmqtt-dev (>= 1.5)
+Build-Depends: debhelper (>= 9), pkg-config, g++, libjsoncpp-dev, libmosquittopp-dev, libmosquitto-dev, libsqlite3-dev, liblog4cpp5-dev, libwbmqtt-dev (>= 1.7)
 
 Package: wb-mqtt-db
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libjsoncpp0, libmosquittopp1, libmosquitto1, libwbmqtt0 (>= 1.5), libsqlite3-0, liblog4cpp5 (>= 1.0)
+Depends: ${shlibs:Depends}, ${misc:Depends}, libjsoncpp0, libmosquittopp1, libmosquitto1, libwbmqtt0 (>= 1.7), libsqlite3-0, liblog4cpp5 (>= 1.0)
 Breaks: wb-mqtt-confed (<< 1.0.2)
 Description: Wiren Board database logger
