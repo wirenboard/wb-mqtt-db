@@ -40,7 +40,7 @@ struct TChannelName
 // hasher for TChannelName
 namespace std {
     template<>
-    struct hash<TChannelName> 
+    struct hash<TChannelName>
     {
         typedef TChannelName argument_type;
         typedef std::size_t result_type;
@@ -91,10 +91,10 @@ struct TLoggingGroup
     int MinUnchangedInterval = 0;
     std::string Id;
     int IntId;
-    
+
     // internal fields - for timer processing
     std::set<int> ChannelIds;
-    
+
     std::chrono::steady_clock::time_point LastSaved;
     std::chrono::steady_clock::time_point LastUSaved;
 };
@@ -113,7 +113,8 @@ struct TMQTTDBLoggerConfig
 class TMQTTDBLogger: public TMQTTPrefixedWrapper
 {
 public:
-    TMQTTDBLogger(const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config, std::string prefix = "");
+    TMQTTDBLogger(const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config,
+                  std::string prefix = "", std::string user = "", std::string password = "");
     ~TMQTTDBLogger();
 
     void OnConnect(int rc);
@@ -147,7 +148,7 @@ private:
     void UpdateDB(int prev_version);
     bool UpdateAccumulator(int channel_id, const std::string &payload);
     void WriteChannel(TChannel &ch, TLoggingGroup &group);
-    
+
     std::tuple<int, int> GetOrCreateIds(const std::string &device, const std::string &control);
     std::tuple<int, int> GetOrCreateIds(const std::string &topic);
     std::tuple<int, int> GetOrCreateIds(const TChannelName &name);

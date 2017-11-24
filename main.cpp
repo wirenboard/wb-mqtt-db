@@ -26,7 +26,7 @@ void sig_handler(int signal)
 {
     running = 0;
 }
-        
+
 /* For debugging reasons */
 ostream& operator<<(ostream &str, const TLoggingGroup &group)
 {
@@ -120,6 +120,8 @@ int main (int argc, char *argv[])
     mqtt_config.Port = 1883;
     string config_fname;
     string mqtt_prefix;
+    string user = "";
+    string password = "";
     int c;
     int verbose_level = 0;
 
@@ -149,11 +151,11 @@ int main (int argc, char *argv[])
             break;
 
         case 'u':
-            mqtt_config.User = optarg;
+            user = optarg;
             break;
-        
+
         case 'P':
-            mqtt_config.Password = optarg;
+            password = optarg;
             break;
 
         case '?':
@@ -212,7 +214,7 @@ int main (int argc, char *argv[])
     log4cpp::Category &log_root = log4cpp::Category::getRoot();
 
     const char* log_file = getenv("MQTT_DB_LOGFILE");
-    if (!log_file) 
+    if (!log_file)
         log_file = "/var/log/wirenboard/wb-mqtt-db.log";
 
     int max_file_size = 1; // in MBytes
@@ -222,7 +224,7 @@ int main (int argc, char *argv[])
 
     if (verbose_level >= 0)
         log_root.setPriority(log4cpp::Priority::INFO);
-    
+
     log4cpp::PatternLayout *log_layout = new log4cpp::PatternLayout;
     log_layout->setConversionPattern("%d{%Y-%m-%d %H:%M:%S.%l} %p: %m%n");
 
@@ -250,7 +252,7 @@ int main (int argc, char *argv[])
 
         log_root.setPriority(priority);
     } else if (config.Debug) {
-        auto appender = new log4cpp::RollingFileAppender("default", log_file, 
+        auto appender = new log4cpp::RollingFileAppender("default", log_file,
                 max_file_size * 1024 * 1024);
         appender->setLayout(log_layout);
         log_root.addAppender(appender);
@@ -265,7 +267,7 @@ int main (int argc, char *argv[])
     }
 
     mosqpp::lib_init();
-    std::shared_ptr<TMQTTDBLogger> mqtt_db_logger(new TMQTTDBLogger(mqtt_config, config, move(mqtt_prefix)));
+    std::shared_ptr<TMQTTDBLogger> mqtt_db_logger(new TMQTTDBLogger(mqtt_config, config, move(mqtt_prefix), move(user), move(password)));
 
     try {
         mqtt_db_logger->Init();
@@ -289,7 +291,7 @@ int main (int argc, char *argv[])
         /* process MQTT events */
         rc = mqtt_db_logger->loop(duration_cast<milliseconds>(next_call - steady_clock::now()).count());
 
-        if (rc != 0) 
+        if (rc != 0)
             mqtt_db_logger->reconnect();
 
         /* process timer events */
