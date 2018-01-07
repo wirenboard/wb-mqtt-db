@@ -43,3 +43,5 @@ wb-mqtt-db
 
 # Visual Studio Code
 .vscode
+debian/files
+debian/wb-mqtt-db.substvars
