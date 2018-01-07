@@ -192,7 +192,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
     if (min_interval_ms > 0) {
         int day_fraction =   86400000 / min_interval_ms /* ms in day */;
-        cout << "day: fraction :" << day_fraction << endl;
+        LOG(DEBUG) << "day: fraction :" << day_fraction;
         get_values_query.bind(++param_num, day_fraction);
     }
 
@@ -204,7 +204,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     while (1) {
 
         // check timeout
-        if (steady_clock::now() - start_time >= LoggerConfig.RequestTimeout) {
+        if (steady_clock::now() - start_time >= timeout) {
             throw TRequestTimeoutException("get_values");
         }
 
