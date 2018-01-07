@@ -1,3 +1,9 @@
+wb-mqtt-db (1.7.2) stable; urgency=medium
+
+  * fix request_timeout handling in RPC request
+
+ -- Evgeny Boger <boger@contactless.ru>  Sun, 07 Jan 2018 16:23:25 +0300
+
 wb-mqtt-db (1.7.1) stable; urgency=medium
 
   * update libwbmqtt version
