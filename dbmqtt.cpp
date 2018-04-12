@@ -16,7 +16,7 @@ bool TMQTTDBLogger::UpdateAccumulator(int channel_id, const string &payload)
     } catch (...) {
         return false; // no processing for uncastable values
     }
-    
+
     ChannelDataCache[channel_id].Accumulated = true;
     auto& accum = ChannelDataCache[channel_id].Accumulator;
 
@@ -31,7 +31,7 @@ bool TMQTTDBLogger::UpdateAccumulator(int channel_id, const string &payload)
             accum.Max = value;
         accum.Sum += value;
     }
-    
+
     return true;
 }
 
@@ -89,8 +89,8 @@ void TMQTTDBLogger::OnMessage(const struct mosquitto_message *message)
         }
 
         if (match) {
-            LOG(DEBUG) << "MQTT message from topic " << topic << ": \"" << payload 
-                    << "\", parsed as group \"" << group.Id << "\""; 
+            LOG(DEBUG) << "MQTT message from topic " << topic << ": \"" << payload
+                    << "\", parsed as group \"" << group.Id << "\"";
 
             tie(channel_int_id, std::ignore) = GetOrCreateIds(topic);
             auto& channel_data = ChannelDataCache[channel_int_id];
@@ -105,7 +105,7 @@ void TMQTTDBLogger::OnMessage(const struct mosquitto_message *message)
             // FIXME: need to fix it when global data types definitions will be ready
             UpdateAccumulator(channel_int_id, payload);
             channel_data.LastValue = payload;
-            channel_data.LastProcessed = steady_clock::now();
+            channel_data.LastProcessed = system_clock::now();
             channel_data.Retained = message->retain;
 
             group.ChannelIds.insert(channel_int_id);

@@ -125,8 +125,8 @@ void TMQTTDBLogger::InitCaches()
         channel_data.RowCount++;
 
         // prepare timestamps
-        auto d = milliseconds(static_cast<long long>(count_channel_query.getColumn(1)));
-        auto current_tp = steady_clock::time_point(d);
+        auto d = milliseconds(static_cast<long long>(count_channel_query.getColumn(0)));
+        auto current_tp = system_clock::time_point(d);
 
         if (current_tp > channel_data.LastProcessed) {
             channel_data.LastProcessed = current_tp;
@@ -146,7 +146,7 @@ void TMQTTDBLogger::InitChannelIds()
         ChannelDataCache[channel_id].Name = name;
 
         // reset values before init caches
-        ChannelDataCache[channel_id].LastProcessed = steady_clock::time_point(milliseconds(0));
+        ChannelDataCache[channel_id].LastProcessed = {};
         ChannelDataCache[channel_id].RowCount = 0;
     }
 }
@@ -169,7 +169,7 @@ void TMQTTDBLogger::InitGroupIds()
         }
     }
 
-    auto now = steady_clock::now();
+    auto now = system_clock::now();
 
     for (auto& group : LoggerConfig.Groups) {
         auto it = stored_group_ids.find(group.Id);

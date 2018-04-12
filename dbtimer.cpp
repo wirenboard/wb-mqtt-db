@@ -15,6 +15,7 @@ std::ostream& operator<<(std::ostream& out, const struct TChannelName &name){
 steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point next_call)
 {
     auto now = steady_clock::now();
+    auto sys_now = system_clock::now();
     bool start_process = false;
 
     if (next_call > now) {
@@ -28,9 +29,9 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
     SQLite::Transaction transaction(*DB);
 
     // for each group - check processing time according to its configuration
- 
+
     for (auto& group : LoggerConfig.Groups) {
-   
+
         bool process_changed = true;
         bool group_processed = false;
 
@@ -40,8 +41,8 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
 
             // check if current group is ready to process changed values
             // or ready to process unchanged values
-            if ((now >= group.LastSaved + seconds(group.MinInterval) && channel_data.Changed) || 
-                (now >= group.LastUSaved + seconds(group.MinUnchangedInterval) &&
+            if ((sys_now >= group.LastSaved + seconds(group.MinInterval) && channel_data.Changed) ||
+                (sys_now >= group.LastUSaved + seconds(group.MinUnchangedInterval) &&
                  !channel_data.Changed && channel_data.LastProcessed >= group.LastUSaved)) {
 
                 if (!start_process) {
@@ -63,10 +64,10 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
         }
 
         if (group_processed) {
-            group.LastSaved = now;
+            group.LastSaved = sys_now;
             if (!process_changed) {
                 LOG(INFO) << "Unchanged values processed!";
-                group.LastUSaved = now;
+                group.LastUSaved = sys_now;
             }
         }
 
@@ -79,7 +80,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
 
     if (start_process)
         transaction.commit();
- 
+
 #ifndef NBENCHMARK
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -145,7 +146,7 @@ void TMQTTDBLogger::WriteChannel(TChannel &channel_data, TLoggingGroup &group)
 
             clean_channel_query.exec();
 
-            SYSLOG(WARN) << "Channel data limit is reached: channel " << channel_data.Name 
+            SYSLOG(WARN) << "Channel data limit is reached: channel " << channel_data.Name
                     << ", row count " << channel_data.RowCount << ", limit " << group.Values;
 
             DLOG(DEBUG) << clean_channel_query.getQuery();

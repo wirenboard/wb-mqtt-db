@@ -73,7 +73,7 @@ struct TChannel
         }
     } Accumulator;
 
-    std::chrono::steady_clock::time_point LastProcessed;
+    std::chrono::system_clock::time_point LastProcessed;
 
     int RowCount;
 
@@ -95,8 +95,8 @@ struct TLoggingGroup
     // internal fields - for timer processing
     std::set<int> ChannelIds;
 
-    std::chrono::steady_clock::time_point LastSaved;
-    std::chrono::steady_clock::time_point LastUSaved;
+    std::chrono::system_clock::time_point LastSaved;
+    std::chrono::system_clock::time_point LastUSaved;
 };
 
 typedef std::shared_ptr<TLoggingGroup> PLoggingGroup;

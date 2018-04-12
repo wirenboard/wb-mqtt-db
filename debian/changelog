@@ -1,3 +1,10 @@
+wb-mqtt-db (1.7.3) stable; urgency=medium
+
+  * fix: timestamp init bug
+  * fix: use system_clock instead of steady_clock for timestamps
+
+ -- Islam Boziev <i.boziev@wirenboard.ru>  Thu, 12 Apr 2018 16:27:30 +0300
+
 wb-mqtt-db (1.7.2) stable; urgency=medium
 
   * fix request_timeout handling in RPC request
