@@ -1,4 +1,4 @@
-wb-mqtt-db (1.7.3) stable, urgency=medium
+wb-mqtt-db (1.7.3) stable; urgency=medium
 
   * add new conditional dependencies for debian stretch support 
 
