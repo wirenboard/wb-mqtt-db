@@ -26,8 +26,8 @@ root@wirenboard:~# cat /etc/wb-mqtt-db.conf
         	"channels" : ["kvadro-1wire_69/+", "wb-w1/+"],
         	"values" : 10000,
         	"values_total" : 100000,
-        	"min_interval" : 5000,
-        	"min_unchanged_interval" : 360000
+        	"min_interval" : 5,
+        	"min_unchanged_interval" : 360
     	}
 	],
 	"database" : "/var/lib/wirenboard/db/data.db",
@@ -36,7 +36,7 @@ root@wirenboard:~# cat /etc/wb-mqtt-db.conf
 ```
 
 
-5000 - сохранять не чаще, чем раз в пять секунд, 360000 - сохранять опорные значения раз в час.
+5 - сохранять не чаще, чем раз в пять секунд, 360 - сохранять опорные значения раз в час.
 
 
 Запросы MQTT RPC
