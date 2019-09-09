@@ -49,7 +49,11 @@
                 "propertyOrder" : 2,
                 "items": { 
                   "type" : "string",
-                  "title" : "MQTT topic pattern"
+                  "title" : "MQTT topic pattern",
+                  "format" : "channelSelect",
+                  "options" : {
+                    "pattern" : true
+                  }
                 },
                 "options" : {
                   "disable_array_reorder" : true
