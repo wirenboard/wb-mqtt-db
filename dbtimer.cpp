@@ -84,7 +84,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
 
-    if (start_process)
+    if ((start_process)&&(duration>300))
         LOG(NOTICE) << "Bulk processing took " << duration << "ms";
 #endif
 
