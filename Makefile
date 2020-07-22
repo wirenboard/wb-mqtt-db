@@ -16,7 +16,7 @@ DB_BIN=wb-mqtt-db
 SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
-OBJ=main.o dbinit.o dbmqtt.o db_rpc.o dbtimer.o
+OBJ=main.o dbinit.o dbmqtt.o db_rpc.o dbtimer.o config.o
 DB_CONFCONVERT=wb-mqtt-db-confconvert
 
 .PHONY: all clean

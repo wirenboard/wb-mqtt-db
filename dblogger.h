@@ -7,24 +7,12 @@
 #include <string>
 #include <set>
 #include <unordered_map>
-#include "jsoncpp/json/json.h"
 #include  "SQLiteCpp/SQLiteCpp.h"
-
-static const int    DEFAULT_TIMEOUT = 9;
-static const int    WB_DB_VERSION = 3;
-static const float  RingBufferClearThreshold = 0.02; // ring buffer will be cleared on limit * (1 + RingBufferClearThreshold) entries
-static const int    WB_DB_LOOP_TIMEOUT = 10; // loop will be interrupted at least once in this interval (in ms) for
-                                             // DB update event
 
 static const char * DB_BACKUP_FILE_EXTENSION = ".backup";
 inline std::string BackupFileName(const std::string &filename) {
     return filename + DB_BACKUP_FILE_EXTENSION;
 }
-
-struct TLoggingChannel
-{
-    std::string Pattern;
-};
 
 struct TChannelName
 {
@@ -80,34 +68,6 @@ struct TChannel
     bool Changed = false;
     bool Accumulated = false;
     bool Retained = false;
-};
-
-struct TLoggingGroup
-{
-    std::vector<TLoggingChannel> Channels;
-    int Values = 0;
-    int ValuesTotal = 0;
-    int MinInterval = 0;
-    int MinUnchangedInterval = 0;
-    std::string Id;
-    int IntId;
-
-    // internal fields - for timer processing
-    std::set<int> ChannelIds;
-
-    std::chrono::steady_clock::time_point LastSaved;
-    std::chrono::steady_clock::time_point LastUSaved;
-};
-
-typedef std::shared_ptr<TLoggingGroup> PLoggingGroup;
-
-struct TMQTTDBLoggerConfig
-{
-    std::vector<TLoggingGroup> Groups;
-    std::string DBFile;
-
-    bool Debug;
-    std::chrono::steady_clock::duration RequestTimeout;
 };
 
 class TMQTTDBLogger: public TMQTTPrefixedWrapper

@@ -97,6 +97,8 @@
     }    
   },
 
+  "required": ["database", "channels"],
+
   "configFile": {
     "path": "/etc/wb-mqtt-db.conf",
     "service": "wb-mqtt-db"

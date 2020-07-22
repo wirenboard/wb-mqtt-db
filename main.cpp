@@ -15,6 +15,7 @@
 #include <log4cpp/OstreamAppender.hh>
 
 #include "logging.h"
+#include "config.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -45,71 +46,6 @@ ostream& operator<<(ostream &str, const TLoggingGroup &group)
     str << ">\tMinUnchangedInterval: " << group.MinUnchangedInterval << endl;
 
     return str;
-}
-
-TMQTTDBLoggerConfig ParseConfigFile(Json::Value &root)
-{
-    TMQTTDBLoggerConfig config;
-
-    if (!root.isMember("database")) {
-        throw TBaseException("database location should be specified in config");
-    }
-
-    config.DBFile = root["database"].asString();
-    config.Debug = root["debug"].asBool();
-    config.RequestTimeout = chrono::seconds(root.isMember("request_timeout") ? root["request_timeout"].asInt() : DEFAULT_TIMEOUT);
-
-    for (const auto& group_item : root["groups"]) {
-
-        TLoggingGroup group;
-
-        if (!group_item.isMember("name")) {
-            throw TBaseException("no name specified for group");
-        }
-        group.Id = group_item["name"].asString();
-
-        if (!group_item.isMember("channels")) {
-            throw TBaseException("no channels specified for group");
-        }
-
-        for (const auto & channel_item : group_item["channels"]) {
-            // convert channel format from d/c to /devices/d/controls/c
-            auto name_split = StringSplit(channel_item.asString(), '/');
-            TLoggingChannel channel = { "/devices/" + name_split[0] + "/controls/" + name_split[1] };
-            group.Channels.push_back(channel);
-        }
-
-        if (group_item.isMember("values")) {
-            if (group_item["values"].asInt() < 0) {
-                throw TBaseException("'values' must be positive or zero");
-            }
-            group.Values = group_item["values"].asInt();
-        }
-
-        if (group_item.isMember("values_total")) {
-            if (group_item["values_total"].asInt() < 0) {
-                throw TBaseException("'values_total' must be positive or zero");
-            }
-            group.ValuesTotal = group_item["values_total"].asInt();
-        }
-
-        if (group_item.isMember("min_interval")) {
-            if (group_item["min_interval"].asInt() < 0) {
-                throw TBaseException("'min_interval' must be positive or zero");
-            }
-            group.MinInterval = group_item["min_interval"].asInt();
-        }
-
-        if (group_item.isMember("min_unchanged_interval")) {
-            if (group_item["min_unchanged_interval"].asInt() < 0)
-                throw TBaseException("'min_unchanged_interval' must be positive or zero");
-            group.MinUnchangedInterval = group_item["min_unchanged_interval"].asInt();
-        }
-
-        config.Groups.push_back(group);
-    }
-
-    return config;
 }
 
 int main (int argc, char *argv[])
@@ -184,31 +120,8 @@ int main (int argc, char *argv[])
         return 1;
     }
 
-    TMQTTDBLoggerConfig config;
-
-    // Let's parse config
-    Json::Value root;
-    Json::Reader reader;
-    std::ifstream configStream(config_fname);
-    bool parsedSuccess = reader.parse(configStream,
-                                   root,
-                                   false);
-
-    if (not parsedSuccess)
-    {
-        cerr << "Failed to parse JSON" << endl
-                   << reader.getFormatedErrorMessages();
-
-        return 1;
-    }
-
-    try {
-        config = ParseConfigFile(root);
-    } catch (TBaseException &e) {
-        cerr << "Failed to parse config file: " << e.what();
-
-        return 1;
-    }
+    //FIXME: try catch
+    TMQTTDBLoggerConfig config(LoadConfig(config_fname, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
 
     // configure logging
     log4cpp::Category &log_root = log4cpp::Category::getRoot();
