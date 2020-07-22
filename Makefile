@@ -1,4 +1,4 @@
-DEBUG?=1
+DEBUG?=0
 
 CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include
 LDFLAGS= -lmosquittopp -lmosquitto -ljsoncpp -lwbmqtt -lsqlite3 -llog4cpp
