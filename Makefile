@@ -1,37 +1,19 @@
-ifeq ($(DEB_TARGET_ARCH),armel)
-CROSS_COMPILE=arm-linux-gnueabi-
-endif
-
-CXX=$(CROSS_COMPILE)g++
-CXX_PATH := $(shell which $(CROSS_COMPILE)g++-4.7)
-
-CC=$(CROSS_COMPILE)gcc
-CC_PATH := $(shell which $(CROSS_COMPILE)gcc-4.7)
-
-ifneq ($(CXX_PATH),)
-	CXX=$(CROSS_COMPILE)g++-4.7
-endif
-
-ifneq ($(CC_PATH),)
-	CC=$(CROSS_COMPILE)gcc-4.7
-endif
-
 DEBUG?=1
 
-CFLAGS=-Wall -std=c++0x -I.
+CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include
 LDFLAGS= -lmosquittopp -lmosquitto -ljsoncpp -lwbmqtt -lsqlite3 -llog4cpp
 
 ifeq ($(DEBUG), 1)
-	CFLAGS+=-ggdb -O0 -pg
+	CXXFLAGS+=-ggdb -O0 -pg
 	LDFLAGS+=-pg
 else
-	CFLAGS+=-Os -DNDEBUG
+	CXXFLAGS+=-Os -DNDEBUG
 endif
 
 CPPFLAGS=$(CFLAGS)
 
 DB_BIN=wb-mqtt-db
-SQLITECPP_DIR=SQLiteCpp
+SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
 OBJ=main.o dbinit.o dbmqtt.o db_rpc.o dbtimer.o
@@ -46,7 +28,7 @@ $(DB_BIN): $(OBJ) $(SQLITECPP_OBJ)
 	${CXX} $^ ${LDFLAGS} -o $@
 
 %.o: %.cpp
-	${CXX} -c $< -o $@ ${CFLAGS};
+	${CXX} -c $< -o $@ ${CXXFLAGS};
 
 clean :
 	-rm -f *.o $(DB_BIN)
