@@ -1,3 +1,9 @@
+wb-mqtt-db (2.0.0) unstable; urgency=medium
+
+  * port to libwbmqtt1
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Fri, 24 Jul 2020 13:37:01 +0500
+
 wb-mqtt-db (1.7.3) stable; urgency=medium
 
   * add new conditional dependencies for debian stretch support 
