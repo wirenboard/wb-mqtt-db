@@ -5,15 +5,21 @@
 using namespace WBMQTT;
 using namespace std::chrono;
 
-template <> inline bool JSON::Is<seconds>(const Json::Value& value)
+namespace WBMQTT
 {
-    return value.isUInt();
-}
+    namespace JSON
+    {
+        template <> inline bool Is<seconds>(const Json::Value& value)
+        {
+            return value.isUInt();
+        }
 
-template <> inline seconds JSON::As<seconds>(const Json::Value& value)
-{
-    return seconds(value.asUInt());
-}
+        template <> inline seconds As<seconds>(const Json::Value& value)
+        {
+            return seconds(value.asUInt());
+        }
+    } // namespace JSON
+} // namespace WBMQTT
 
 TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& shemaFileName)
 {
@@ -38,7 +44,8 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
         for (const auto& channelItem : groupItem["channels"]) {
             // convert channel format from d/c to /devices/d/controls/c
             auto name_split = StringSplit(channelItem.asString(), '/');
-            group.MqttTopicPatterns.emplace_back( "/devices/" + name_split[0] + "/controls/" + name_split[1] );
+            group.MqttTopicPatterns.emplace_back("/devices/" + name_split[0] + "/controls/" +
+                                                 name_split[1]);
         }
 
         config.Cache.Groups.push_back(group);
