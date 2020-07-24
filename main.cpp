@@ -1,219 +1,179 @@
 #include "dblogger.h"
 
-#include <iostream>
-#include <string>
-#include <ctime>
-#include <unistd.h>
-#include <fstream>
-#include <signal.h>
-#include <cstdlib>
+#include <getopt.h>
 
-#include <log4cpp/Category.hh>
-#include <log4cpp/RollingFileAppender.hh>
-#include <log4cpp/SyslogAppender.hh>
-#include <log4cpp/PatternLayout.hh>
-#include <log4cpp/OstreamAppender.hh>
-
-#include "logging.h"
 #include "config.h"
+#include "log.h"
+#include "sqlite_storage.h"
+
+#include <wblib/signal_handling.h>
 
 using namespace std;
 using namespace std::chrono;
 
-static sig_atomic_t running = 1;
-
-/* it handles only SIGTERM and SIGINT to exit gracefully */
-void sig_handler(int signal)
+namespace
 {
-    running = 0;
-}
+    //! Maximum timeout before forced application termination. Topic cleanup can take a lot of time
+    const auto DRIVER_STOP_TIMEOUT_S = chrono::seconds(5);
 
-/* For debugging reasons */
-ostream& operator<<(ostream &str, const TLoggingGroup &group)
-{
-    str << "> Group " << group.Id << endl;
-    str << ">\tChannels: ";
+    //! Maximun time to start application. Exceded timeout will case application termination.
+    const auto DRIVER_INIT_TIMEOUT_S = chrono::seconds(5);
 
-    for (const TLoggingChannel &ch: group.Channels) {
-        str << ch.Pattern << " ";
+    void PrintUsage()
+    {
+        cout << "Usage:" << endl
+             << " wb-mqtt-db [options]" << endl
+             << "Options:" << endl
+             << "  -d       level     enable debuging output:" << endl
+             << "                       1 - db only;" << endl
+             << "                       2 - mqtt only;" << endl
+             << "                       3 - both;" << endl
+             << "                       negative values - silent mode (-1, -2, -3))" << endl
+             << "  -c       config    config file" << endl
+             << "  -p       port      MQTT broker port (default: 1883)" << endl
+             << "  -h, -H   IP        MQTT broker IP (default: localhost)" << endl
+             << "  -u       user      MQTT user (optional)" << endl
+             << "  -P       password  MQTT user password (optional)" << endl
+             << "  -T       prefix    MQTT topic prefix (optional)" << endl;
     }
 
-    str << endl;
+    void ParseCommadLine(int                           argc,
+                         char*                         argv[],
+                         WBMQTT::TMosquittoMqttConfig& mqttConfig,
+                         string&                       config)
+    {
+        int debugLevel = 0;
+        int c;
+        while ((c = getopt(argc, argv, "d:c:h:H:p:u:P:T:")) != -1) {
+            switch (c) {
+            case 'd':
+                debugLevel = stoi(optarg);
+                break;
+            case 'c':
+                config = optarg;
+                break;
+            case 'p':
+                mqttConfig.Port = stoi(optarg);
+                break;
+            case 'h':
+            case 'H': // backward compatibility
+                mqttConfig.Host = optarg;
+                break;
+            case 'T':
+                mqttConfig.Prefix = optarg;
+                break;
+            case 'u':
+                mqttConfig.User = optarg;
+                break;
+            case 'P':
+                mqttConfig.Password = optarg;
+                break;
 
-    str << ">\tValues: " << group.Values << endl;
-    str << ">\tValues total: " << group.ValuesTotal << endl;
-    str << ">\tMinInterval: " << group.MinInterval << endl;
-    str << ">\tMinUnchangedInterval: " << group.MinUnchangedInterval << endl;
-
-    return str;
-}
-
-int main (int argc, char *argv[])
-{
-    int rc;
-    TMQTTDBLogger::TConfig mqtt_config;
-    mqtt_config.Host = "localhost";
-    mqtt_config.Port = 1883;
-    string config_fname;
-    string mqtt_prefix;
-    string user = "";
-    string password = "";
-    int c;
-    int verbose_level = 0;
-
-    while ((c = getopt(argc, argv, "hp:H:c:T:vu:P:")) != -1) {
-        switch (c) {
-        case 'p' :
-            /* VLOG(2) << "Option p with value " << optarg; */
-            mqtt_config.Port = stoi(optarg);
-            break;
-        case 'H' :
-            /* VLOG(2) << "Option H with value " << optarg; */
-            mqtt_config.Host = optarg;
-            break;
-
-        case 'c':
-            /* VLOG(2) << "Option c with value " << optarg; */
-            config_fname = optarg;
-            break;
-
-        case 'v':
-            /* VLOG(2) << "Option v" << optarg; */
-            verbose_level++;
-            break;
-
-        case 'T':
-            mqtt_prefix = optarg;
-            break;
-
-        case 'u':
-            user = optarg;
-            break;
-
-        case 'P':
-            password = optarg;
-            break;
-
-        case '?':
-            /* LOG(WARNING) << "?? Getopt returned character code 0%o ??" << static_cast<char>(c); */
-        case 'h':
-            printf("help menu\n");
-        default:
-            printf("Usage:\n wb-mqtt-db [options] [mask]\n");
-            printf("Options:\n");
-            printf("\t-p PORT     \t\t\t set to what port wb-mqtt-db should connect (default: 1883)\n");
-            printf("\t-H IP       \t\t\t set to what IP wb-mqtt-db should connect (default: localhost)\n");
-            printf("\t-c config   \t\t\t config file\n");
-            printf("\t-v          \t\t\t verbose output to stderr (may be -v -v or -v -v -v also)\n");
-            printf("\t-u USER     \t\t\t MQTT user (optional)\n");
-            printf("\t-P PASSWORD \t\t\t MQTT user password (optional)\n");
-            printf("\t-T prefix   \t\t\t MQTT topic prefix (optional)\n");
-
-            return 0;
+            case '?':
+            default:
+                PrintUsage();
+                exit(2);
+            }
         }
-    }
 
+        switch (debugLevel) {
+        case 0:
+            break;
+        case -1:
+            Info.SetEnabled(false);
+            break;
 
+        case -2:
+            WBMQTT::Info.SetEnabled(false);
+            break;
 
-    if (config_fname.empty()) {
-        cerr << "Please specify config file with -c option" << endl;
-        return 1;
-    }
+        case -3:
+            WBMQTT::Info.SetEnabled(false);
+            Info.SetEnabled(false);
+            break;
 
-    //FIXME: try catch
-    TMQTTDBLoggerConfig config(LoadConfig(config_fname, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
-
-    // configure logging
-    log4cpp::Category &log_root = log4cpp::Category::getRoot();
-
-    const char* log_file = getenv("MQTT_DB_LOGFILE");
-    if (!log_file)
-        log_file = "/var/log/wirenboard/wb-mqtt-db.log";
-
-    int max_file_size = 1; // in MBytes
-    const char *env_max_file_size = getenv("MQTT_DB_MAX_LOGFILE_SIZE");
-    if (env_max_file_size)
-        max_file_size = atoi(env_max_file_size);
-
-    if (verbose_level >= 0)
-        log_root.setPriority(log4cpp::Priority::INFO);
-
-    log4cpp::PatternLayout *log_layout = new log4cpp::PatternLayout;
-    log_layout->setConversionPattern("%d{%Y-%m-%d %H:%M:%S.%l} %p: %m%n");
-
-    // Enable huge debug logging if required
-    if (verbose_level > 0) {
-        auto appender = new log4cpp::OstreamAppender("default", &cerr);
-
-        appender->setLayout(log_layout);
-        log_root.addAppender(appender);
-
-        auto priority = log4cpp::Priority::NOTICE;
-
-        switch (verbose_level) {
         case 1:
+            Debug.SetEnabled(true);
             break;
+
         case 2:
-            priority = log4cpp::Priority::INFO;
+            WBMQTT::Debug.SetEnabled(true);
             break;
+
         case 3:
-            priority = log4cpp::Priority::DEBUG;
+            WBMQTT::Debug.SetEnabled(true);
+            Debug.SetEnabled(true);
             break;
+
         default:
-            break;
+            cout << "Invalid -d parameter value " << debugLevel << endl;
+            PrintUsage();
+            exit(2);
         }
 
-        log_root.setPriority(priority);
-    } else if (config.Debug) {
-        auto appender = new log4cpp::RollingFileAppender("default", log_file,
-                max_file_size * 1024 * 1024);
-        appender->setLayout(log_layout);
-        log_root.addAppender(appender);
-        log_root.setPriority(log4cpp::Priority::INFO);
-    } else {
-        // default appender is Syslog appender - not for debug use!
-        long pid = getpid();
-        auto appender = new log4cpp::SyslogAppender("syslog", "wb-mqtt-db[" + to_string(pid) + "]");
-        appender->setLayout(log_layout);
-        log_root.addAppender(appender);
-        log_root.setPriority(log4cpp::Priority::NOTICE);
+        if (optind < argc) {
+            for (int index = optind; index < argc; ++index) {
+                cout << "Skipping unknown argument " << argv[index] << endl;
+            }
+        }
     }
 
-    mosqpp::lib_init();
-    std::shared_ptr<TMQTTDBLogger> mqtt_db_logger(new TMQTTDBLogger(mqtt_config, config, move(mqtt_prefix), move(user), move(password)));
+    void PrintStartupInfo(const WBMQTT::TMosquittoMqttConfig& mqttConfig, const string& customConfig)
+    {
+        cout << "MQTT broker " << mqttConfig.Host << ':' << mqttConfig.Port << endl;
+        if (!customConfig.empty()) {
+            cout << "Custom config " << customConfig << endl;
+        }
+    }
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    WBMQTT::TMosquittoMqttConfig mqttConfig;
+    string                       configFileName("/etc/wb-mqtt-db.conf");
+
+    ParseCommadLine(argc, argv, mqttConfig, configFileName);
+    PrintStartupInfo(mqttConfig, configFileName);
+
+    WBMQTT::TPromise<void> initialized;
+    WBMQTT::SetThreadName("main");
+    WBMQTT::SignalHandling::Handle({SIGINT, SIGTERM});
+    WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [&] { WBMQTT::SignalHandling::Stop(); });
+
+    /* if signal arrived before driver is initialized:
+        wait some time to initialize and then exit gracefully
+        else if timed out: exit with error
+    */
+    WBMQTT::SignalHandling::SetWaitFor(DRIVER_INIT_TIMEOUT_S, initialized.GetFuture(), [&] {
+        Error.Log() << "Driver takes too long to initialize. Exiting.";
+        cerr << "Error: DRIVER_INIT_TIMEOUT_S" << endl;
+        exit(1);
+    });
+
+    /* if handling of signal takes too much time: exit with error */
+    WBMQTT::SignalHandling::SetOnTimeout(DRIVER_STOP_TIMEOUT_S, [&] {
+        Error.Log() << "Driver takes too long to stop. Exiting.";
+        cerr << "Error: DRIVER_STOP_TIMEOUT_S" << endl;
+        exit(2);
+    });
+    WBMQTT::SignalHandling::Start();
 
     try {
-        mqtt_db_logger->Init();
-        mqtt_db_logger->Init2();
-    } catch (TBaseException &e) {
-        LOG(ERROR) << "Failed to init logger: " << e.what();
+        TMQTTDBLoggerConfig config(
+            LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
+        TSqliteStorage         storage(config.DBFile);
+        WBMQTT::PMqttClient    mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
+        WBMQTT::PMqttRpcServer rpcServer(WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"));
+        TMQTTDBLogger logger(mqttClient, config.Cache, storage, rpcServer, config.RequestTimeout);
 
+        WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [&] { logger.Stop(); });
+
+        Info.Log() << "DB logger started, go to main loop";
+        logger.Start();
+    } catch (const std::exception& e) {
+        Error.Log() << e.what();
         return 2;
     }
-
-    /* init SIGINT and SIGTERM handler to exit gracefully */
-    signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);
-
-
-    steady_clock::time_point next_call = steady_clock::now();
-
-    SYSLOG(NOTICE) << "DB logger started, go to main loop";
-
-    while (running) {
-        /* process MQTT events */
-        rc = mqtt_db_logger->loop(duration_cast<milliseconds>(next_call - steady_clock::now()).count());
-
-        if (rc != 0)
-            mqtt_db_logger->reconnect();
-
-        /* process timer events */
-        next_call = mqtt_db_logger->ProcessTimer(next_call);
-    }
-
-    SYSLOG(NOTICE) << "Exit signal received, stopping";
-
-    mqtt_db_logger->disconnect();
-
     return 0;
 }

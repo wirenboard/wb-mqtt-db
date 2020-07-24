@@ -1,7 +1,7 @@
 DEBUG?=0
 
 CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include
-LDFLAGS= -lmosquittopp -lmosquitto -ljsoncpp -lwbmqtt -lsqlite3 -llog4cpp
+LDFLAGS= -ljsoncpp -lwbmqtt1 -lsqlite3
 
 ifeq ($(DEBUG), 1)
 	CXXFLAGS+=-ggdb -O0 -pg
@@ -16,7 +16,7 @@ DB_BIN=wb-mqtt-db
 SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
-OBJ=main.o dbinit.o dbmqtt.o db_rpc.o dbtimer.o config.o
+OBJ=main.o config.o log.o sqlite_storage.o dblogger.o
 DB_CONFCONVERT=wb-mqtt-db-confconvert
 
 .PHONY: all clean

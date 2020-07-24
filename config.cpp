@@ -5,12 +5,12 @@
 using namespace WBMQTT;
 using namespace std::chrono;
 
-template <> inline bool JSON::Is<steady_clock::duration>(const Json::Value& value)
+template <> inline bool JSON::Is<seconds>(const Json::Value& value)
 {
     return value.isUInt();
 }
 
-template <> inline steady_clock::duration JSON::As<steady_clock::duration>(const Json::Value& value)
+template <> inline seconds JSON::As<seconds>(const Json::Value& value)
 {
     return seconds(value.asUInt());
 }
@@ -29,20 +29,19 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
     for (const auto& groupItem : root["groups"]) {
         TLoggingGroup group;
 
-        JSON::Get(groupItem, "name", group.Id);
-        JSON::Get(groupItem, "values", group.Values);
-        JSON::Get(groupItem, "values_total", group.ValuesTotal);
-        JSON::Get(groupItem, "min_interval", group.MinInterval);
-        JSON::Get(groupItem, "min_unchanged_interval", group.MinUnchangedInterval);
+        JSON::Get(groupItem, "name", group.Name);
+        JSON::Get(groupItem, "values", group.MaxChannelRecords);
+        JSON::Get(groupItem, "values_total", group.MaxRecords);
+        JSON::Get(groupItem, "min_interval", group.ChangedInterval);
+        JSON::Get(groupItem, "min_unchanged_interval", group.UnchangedInterval);
 
         for (const auto& channelItem : groupItem["channels"]) {
             // convert channel format from d/c to /devices/d/controls/c
             auto name_split = StringSplit(channelItem.asString(), '/');
-            TLoggingChannel channel = { "/devices/" + name_split[0] + "/controls/" + name_split[1] };
-            group.Channels.push_back(channel);
+            group.MqttTopicPatterns.emplace_back( "/devices/" + name_split[0] + "/controls/" + name_split[1] );
         }
 
-        config.Groups.push_back(group);
+        config.Cache.Groups.push_back(group);
     }
 
     return config;
