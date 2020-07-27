@@ -156,7 +156,7 @@ void TMQTTDBLogger::Stop()
     {
         std::lock_guard<std::mutex> lg(ActiveMutex);
         if (!Active) {
-            LOG(Error) << "Attempt to stop not started driver";
+            return;
         }
         Active = false;
     }
