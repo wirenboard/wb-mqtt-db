@@ -30,6 +30,79 @@ namespace
 
         dst << src.rdbuf();
     }
+
+    void convertDBFrom3To4(SQLite::Database& DB)
+    {
+        // save old channels table
+        DB.exec("ALTER TABLE channels RENAME TO channels_old");
+
+        // save new channels table
+        DB.exec("CREATE TABLE channels ( "
+                 "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                 "device VARCHAR(255), "
+                 "control VARCHAR(255), "
+                 "UNIQUE(device,control) "
+                 ")");
+
+        // save unique channels to new channels table and update keys in data table
+        {
+            SQLite::Statement query(
+                DB,
+                "SELECT int_id, device, control FROM channels_old ORDER BY device, control");
+            int          prevId = -1;
+            TChannelName prevName;
+            while (query.executeStep()) {
+                TChannelName curName(query.getColumn(1), query.getColumn(2));
+                if (curName == prevName) {
+                    SQLite::Statement updateQuery(DB,
+                                                  "UPDATE data SET channel=? WHERE channel=?");
+                    updateQuery.bind(1, prevId);
+                    updateQuery.bind(2, query.getColumn(0).getInt());
+                    updateQuery.exec();
+                } else {
+                    prevName = curName;
+                    prevId   = query.getColumn(0).getInt();
+                    SQLite::Statement insertQuery(DB,
+                                                  "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
+                    insertQuery.bind(1, prevId);
+                    insertQuery.bind(2, curName.Device);
+                    insertQuery.bind(3, curName.Control);
+                    insertQuery.exec();
+                }
+            }
+        }
+
+        // drop old channels table
+        DB.exec("DROP TABLE channels_old");
+
+        // save old data table
+        DB.exec("ALTER TABLE data RENAME TO data_old");
+
+        // create new data table
+        DB.exec("CREATE TABLE data ("
+                 "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 "channel INTEGER,"
+                 "value VARCHAR(255),"
+                 "timestamp INTEGER DEFAULT(0),"
+                 "group_id INTEGER,"
+                 "max VARCHAR(255),"
+                 "min VARCHAR(255),"
+                 "retained INTEGER"
+                 ")");
+
+        // copy all data without device field
+        DB.exec("INSERT INTO data "
+                 "SELECT uid, channel, value, timestamp, group_id, max, min, retained "
+                 "FROM data_old");
+
+        // drop old data table
+        DB.exec("DROP TABLE data_old");
+
+        // drop old devices table
+        DB.exec("DROP TABLE devices");
+
+        DB.exec("UPDATE variables SET value=\"4\" WHERE name=\"db_version\"");
+    }
 } // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
@@ -72,8 +145,6 @@ TSqliteStorage::TSqliteStorage(const string& dbFile)
 
     if (CheckBackupFile(dbFile)) {
         RemoveBackupFile(dbFile);
-    } else {
-        LOG(Error) << "Can't remove backup DB file";
     }
 }
 
@@ -85,7 +156,8 @@ void TSqliteStorage::CreateTables(int dbVersion)
     DB->exec("CREATE TABLE IF NOT EXISTS channels ( "
              "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
              "device VARCHAR(255), "
-             "control VARCHAR(255) "
+             "control VARCHAR(255), "
+             "UNIQUE(device,control) "
              ")  ");
 
     LOG(Debug) << "Creating 'groups' table...";
@@ -157,8 +229,6 @@ void TSqliteStorage::Load(TLoggerCache& cache)
         }
     }
 
-    auto now = steady_clock::now();
-
     for (auto& group : cache.Groups) {
         auto it = storedGroupIds.find(group.Name);
         if (it != storedGroupIds.end()) {
@@ -169,9 +239,6 @@ void TSqliteStorage::Load(TLoggerCache& cache)
             query.exec();
             group.StorageId = DB->getLastInsertRowid();
         }
-
-        group.LastSaved  = now;
-        group.LastUSaved = now;
     }
 
     {
@@ -207,13 +274,14 @@ void TSqliteStorage::Load(TLoggerCache& cache)
             if (group) {
                 TChannelName channelName(query.getColumn(0).getString(),
                                          query.getColumn(1).getString());
-                TChannel&    channel = group->Channels[channelName];
-                channel.StorageId    = query.getColumn(2).getInt();
-                auto d               = milliseconds(query.getColumn(4).getInt64());
-                channel.LastChanged  = system_clock::time_point(d);
-                channel.LastValue    = query.getColumn(5).getString();
-                channel.RecordCount  = query.getColumn(6).getInt();
-                channel.LastSaved    = now;
+                LOG(Debug) << "Load " << channelName.Device << "/" << channelName.Control << " from "
+                           << group->Name;
+                TChannel& channel   = group->Channels[channelName];
+                channel.StorageId   = query.getColumn(2).getInt();
+                auto d              = milliseconds(query.getColumn(4).getInt64());
+                channel.LastChanged = system_clock::time_point(d);
+                channel.LastValue   = query.getColumn(5).getString();
+                channel.RecordCount = query.getColumn(6).getInt();
                 group->RecordCount += channel.RecordCount;
             }
         }
@@ -320,35 +388,7 @@ void TSqliteStorage::UpdateDB(int prev_version)
 
     case 3:
         LOG(Info) << "Convert database from version 3";
-
-        // save old data table
-        DB->exec("ALTER TABLE data RENAME TO data_old");
-
-        // create new data table
-        DB->exec("CREATE TABLE data ("
-                 "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
-                 "channel INTEGER,"
-                 "value VARCHAR(255),"
-                 "timestamp INTEGER DEFAULT(0),"
-                 "group_id INTEGER,"
-                 "max VARCHAR(255),"
-                 "min VARCHAR(255),"
-                 "retained INTEGER"
-                 ")");
-
-        // copy all data without device field
-        DB->exec("INSERT INTO data "
-                 "SELECT uid, channel, value, timestamp, group_id, max, min, retained "
-                 "FROM data_old");
-
-        // drop old data table
-        DB->exec("DROP TABLE data_old");
-
-        // drop old devices table
-        DB->exec("DROP TABLE devices");
-
-        DB->exec("UPDATE variables SET value=\"4\" WHERE name=\"db_version\"");
-
+        convertDBFrom3To4(*DB);
         break;
 
     default:
@@ -436,14 +476,10 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
         insert_row_query.bind(5);                    // bind NULL values
     }
 
-    channel.Changed = false;
-    ++channel.RecordCount;
-
     insert_row_query.bind(6, channel.Retained ? 1 : 0);
-
     insert_row_query.exec();
 
-    LOG(Debug) << channelName << ": " << insert_row_query.getQuery();
+    ++channel.RecordCount;
 
     // local cache is needed here since SELECT COUNT are extremely slow in sqlite
     // so we only ask DB at startup. This applies to two if blocks below.

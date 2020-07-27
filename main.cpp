@@ -17,7 +17,7 @@ namespace
     const auto DRIVER_STOP_TIMEOUT_S = chrono::seconds(5);
 
     //! Maximun time to start application. Exceded timeout will case application termination.
-    const auto DRIVER_INIT_TIMEOUT_S = chrono::seconds(5);
+    const auto DRIVER_INIT_TIMEOUT_S = chrono::seconds(30);
 
     void PrintUsage()
     {
@@ -118,12 +118,10 @@ namespace
         }
     }
 
-    void PrintStartupInfo(const WBMQTT::TMosquittoMqttConfig& mqttConfig, const string& customConfig)
+    void PrintStartupInfo(const WBMQTT::TMosquittoMqttConfig& mqttConfig, const string& configFile)
     {
         cout << "MQTT broker " << mqttConfig.Host << ':' << mqttConfig.Port << endl;
-        if (!customConfig.empty()) {
-            cout << "Custom config " << customConfig << endl;
-        }
+        cout << "Config file " << configFile << endl;
     }
 
 } // namespace
@@ -168,12 +166,14 @@ int main(int argc, char* argv[])
         TMQTTDBLogger logger(mqttClient, config.Cache, storage, rpcServer, config.RequestTimeout);
 
         WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [&] { logger.Stop(); });
-
+        initialized.Complete();
         Info.Log() << "DB logger started, go to main loop";
         logger.Start();
     } catch (const std::exception& e) {
         Error.Log() << e.what();
+        WBMQTT::SignalHandling::Stop();
         return 2;
     }
+    WBMQTT::SignalHandling::Wait();
     return 0;
 }

@@ -7,3 +7,5 @@ failed-upgrade)
         mv /etc/wb-mqtt-db.conf.old /etc/wb-mqtt-db.conf 
     fi
 esac
+
+#DEBHELPER#

@@ -99,7 +99,7 @@ TMQTTDBLogger::TMQTTDBLogger(PMqttClient          mqttClient,
                              IStorage&            storage,
                              PMqttRpcServer       rpcServer,
                              std::chrono::seconds getValuesRpcRequestTimeout)
-    : Cache(cache), MqttClient(mqttClient), Storage(storage), RpcServer(rpcServer),
+    : Cache(cache), MqttClient(mqttClient), Storage(storage), RpcServer(rpcServer), Active(false),
       GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
 {
     for (auto& group : Cache.Groups) {
@@ -120,6 +120,15 @@ TMQTTDBLogger::TMQTTDBLogger(PMqttClient          mqttClient,
                               bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
 }
 
+TMQTTDBLogger::~TMQTTDBLogger()
+{
+    try {
+        Stop();
+    } catch (const std::exception& e) {
+        LOG(Error) << e.what();
+    }
+}
+
 void TMQTTDBLogger::Start()
 {
     {
@@ -130,9 +139,12 @@ void TMQTTDBLogger::Start()
         }
         Active = true;
     }
+
+    Storage.Load(Cache);
+
     MqttClient->Start();
     RpcServer->Start();
-    steady_clock::time_point timeout = steady_clock::now();
+    steady_clock::time_point timeout = steady_clock::now() + std::chrono::seconds(5);
     while (Active) {
         ProcessMessages();
         timeout = ProcessTimer(timeout);
@@ -162,15 +174,15 @@ void TMQTTDBLogger::ProcessMessages()
     while (!localQueue.empty()) {
         auto msg = localQueue.front();
         if (!msg.Message.Payload.empty()) {
-            LOG(Debug) << "MQTT message from topic " << msg.Message.Topic << ": \""
-                       << msg.Message.Payload << "\", parsed as group \"" << msg.Group.Name << "\"";
-
             auto& channelData = msg.Group.Channels[TChannelName(msg.Message.Topic)];
 
+            const char* status = "is same";
             if (msg.Message.Payload != channelData.LastValue) {
-                LOG(Debug) << "Data has changed!";
+                status              = "IS CHANGED";
                 channelData.Changed = true;
             }
+            LOG(Debug) << "\"" << msg.Group.Name << "\" " << msg.Message.Topic << ": \""
+                       << msg.Message.Payload << "\" " << status;
 
             if (channelData.Accumulator.Update(msg.Message.Payload)) {
                 channelData.Accumulated = true;
@@ -189,6 +201,8 @@ std::ostream& operator<<(std::ostream& out, const struct TChannelName& name)
     return out;
 }
 
+// check if current group is ready to process changed values
+// or ready to process unchanged values
 bool ShouldWriteChannel(steady_clock::time_point now,
                         const TLoggingGroup&     group,
                         const TChannel&          channel)
@@ -201,54 +215,54 @@ bool ShouldWriteChannel(steady_clock::time_point now,
     return false;
 }
 
-steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point next_call)
+steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point nextCall)
 {
     auto now = steady_clock::now();
 
-    if (next_call > now) {
-        return next_call; // there is some time to wait
+    if (nextCall > now) {
+        return nextCall; // there is some time to wait
     }
 
 #ifndef NBENCHMARK
     TBenchmark benchmark("Bulk processing took ", false);
 #endif
 
+    nextCall = now + min(Cache.Groups[0].ChangedInterval, Cache.Groups[0].UnchangedInterval);
+
     for (auto& group : Cache.Groups) {
 
-        bool process_changed = true;
+        bool processChanged = true;
+        bool saved          = false;
 
         for (auto& channel : group.Channels) {
-            // check if current group is ready to process changed values
-            // or ready to process unchanged values
+            const char* saveStatus = "nothing to save";
             if (ShouldWriteChannel(now, group, channel.second)) {
-                LOG(Info) << "Processing channel " << channel.first << " from group " << group.Name
-                          << (channel.second.Changed ? ", changed" : ", UNCHANGED");
-
-                process_changed = process_changed && channel.second.Changed;
+                saveStatus = (channel.second.Changed ? "save changed" : "save UNCHANGED");
                 Storage.WriteChannel(channel.first, channel.second, group);
-                channel.second.Changed   = false;
+                processChanged           = processChanged && channel.second.Changed;
+                saved                    = true;
                 channel.second.LastSaved = now;
-                group.LastSaved          = now;
-
-#ifndef NBENCHMARK
-                benchmark.Enable();
-#endif
+                channel.second.Changed   = false;
             }
+            LOG(Debug) << "\"" << group.Name << "\" " << channel.first << ": " << saveStatus;
         }
 
-        if (!process_changed) {
-            group.LastUSaved = now;
+        if (saved) {
+            group.LastSaved = now;
+            if (!processChanged) {
+                group.LastUSaved = now;
+            }
+#ifndef NBENCHMARK
+            benchmark.Enable();
+#endif
         }
 
-        // select minimal next call time
-        if (next_call > now + min(group.ChangedInterval, group.UnchangedInterval)) {
-            next_call = now + min(group.ChangedInterval, group.UnchangedInterval);
-        }
+        nextCall = min(nextCall, now + min(group.ChangedInterval, group.UnchangedInterval));
     }
 
     Storage.Commit();
 
-    return next_call;
+    return nextCall;
 }
 
 Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
@@ -439,7 +453,7 @@ TBenchmark::~TBenchmark()
 {
     if (Enabled) {
         high_resolution_clock::time_point stop = high_resolution_clock::now();
-        LOG(Info) << Message << duration_cast<milliseconds>(Start - stop).count() << "ms";
+        LOG(Info) << Message << duration_cast<milliseconds>(stop - Start).count() << " ms";
     }
 }
 

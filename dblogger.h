@@ -186,6 +186,8 @@ public:
                   WBMQTT::PMqttRpcServer rpcServer,
                   std::chrono::seconds   getValuesRpcRequestTimeout);
 
+    ~TMQTTDBLogger();
+
     void Start();
 
     void Stop();

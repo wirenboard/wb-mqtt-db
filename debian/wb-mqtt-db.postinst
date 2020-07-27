@@ -15,3 +15,5 @@ install|upgrade|configure)
         fi
     fi
 esac
+
+#DEBHELPER#
