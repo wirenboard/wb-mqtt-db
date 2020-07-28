@@ -160,15 +160,17 @@ int main(int argc, char* argv[])
     try {
         TMQTTDBLoggerConfig config(
             LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
-        TSqliteStorage         storage(config.DBFile);
-        WBMQTT::PMqttClient    mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
-        WBMQTT::PMqttRpcServer rpcServer(WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"));
-        TMQTTDBLogger logger(mqttClient, config.Cache, storage, rpcServer, config.RequestTimeout);
+        WBMQTT::PMqttClient            mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
+        std::shared_ptr<TMQTTDBLogger> logger(new TMQTTDBLogger(mqttClient,
+                                                                config.Cache,
+                                                                std::make_unique<TSqliteStorage>(config.DBFile),
+                                                                WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"),
+                                                                config.RequestTimeout));
 
-        WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [&] { logger.Stop(); });
+        WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [=] { logger->Stop(); });
         initialized.Complete();
         Info.Log() << "DB logger started, go to main loop";
-        logger.Start();
+        logger->Start();
     } catch (const std::exception& e) {
         Error.Log() << e.what();
         WBMQTT::SignalHandling::Stop();

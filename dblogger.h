@@ -180,11 +180,11 @@ struct TMqttMsg
 class TMQTTDBLogger
 {
 public:
-    TMQTTDBLogger(WBMQTT::PMqttClient    mqttClient,
-                  const TLoggerCache&    cache,
-                  IStorage&              storage,
-                  WBMQTT::PMqttRpcServer rpcServer,
-                  std::chrono::seconds   getValuesRpcRequestTimeout);
+    TMQTTDBLogger(WBMQTT::PMqttClient       mqttClient,
+                  const TLoggerCache&       cache,
+                  std::unique_ptr<IStorage> storage,
+                  WBMQTT::PMqttRpcServer    rpcServer,
+                  std::chrono::seconds      getValuesRpcRequestTimeout);
 
     ~TMQTTDBLogger();
 
@@ -192,18 +192,7 @@ public:
 
     void Stop();
 
-    // Json::Value GetValues(const Json::Value& input);
-    // Json::Value GetChannels(const Json::Value& input);
-
 private:
-    std::chrono::steady_clock::time_point ProcessTimer(
-        std::chrono::steady_clock::time_point next_call);
-
-    void ProcessMessages();
-
-    Json::Value GetChannels(const Json::Value& params);
-    Json::Value GetValues(const Json::Value& params);
-
     struct TMqttMsg
     {
         TLoggingGroup&                        Group;
@@ -211,14 +200,23 @@ private:
         std::chrono::system_clock::time_point ReceiveTime;
     };
 
-    TLoggerCache                              Cache;
-    WBMQTT::PMqttClient                       MqttClient;
-    IStorage&                                 Storage;
-    WBMQTT::PMqttRpcServer                    RpcServer;
-    std::mutex                                ActiveMutex;
-    bool                                      Active;
-    WBMQTT::TThreadSafe<std::queue<TMqttMsg>> MessagesQueue;
-    std::chrono::seconds                      GetValuesRpcRequestTimeout;
+    std::chrono::milliseconds ProcessTimer();
+
+    void ProcessMessages(std::queue<TMqttMsg>& messages);
+
+    Json::Value GetChannels(const Json::Value& params);
+    Json::Value GetValues(const Json::Value& params);
+
+    TLoggerCache                          Cache;
+    WBMQTT::PMqttClient                   MqttClient;
+    std::unique_ptr<IStorage>             Storage;
+    WBMQTT::PMqttRpcServer                RpcServer;
+    std::mutex                            Mutex;
+    std::condition_variable               WakeupCondition;
+    bool                                  Active;
+    std::queue<TMqttMsg>                  MessagesQueue;
+    std::chrono::seconds                  GetValuesRpcRequestTimeout;
+    std::chrono::steady_clock::time_point NextSaveTime;
 };
 
 class TBenchmark
