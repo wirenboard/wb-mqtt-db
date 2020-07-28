@@ -8,6 +8,9 @@ class TSqliteStorage : public IStorage
     std::unique_ptr<SQLite::Database>     DB;
     std::unordered_map<TChannelName, int> StoredChannelIds;
     std::unique_ptr<SQLite::Transaction>  Transaction;
+    std::unique_ptr<SQLite::Statement>    InsertRowQuery;
+    std::unique_ptr<SQLite::Statement>    CleanChannelQuery;
+    std::unique_ptr<SQLite::Statement>    CleanGroupQuery;
 
     void CreateTables(int dbVersion);
     void CreateIndices();

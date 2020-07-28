@@ -219,12 +219,10 @@ bool ShouldWriteChannel(steady_clock::time_point now,
                         const TLoggingGroup&     group,
                         const TChannel&          channel)
 {
-    if ((now >= group.LastSaved + group.ChangedInterval) && channel.Changed)
-        return true;
-    if ((now >= group.LastUSaved + group.UnchangedInterval) && !channel.Changed &&
-        channel.LastSaved >= group.LastUSaved)
-        return true;
-    return false;
+    if (channel.Changed) {
+        return (now >= group.LastSaved + group.ChangedInterval);
+    }
+    return (( channel.LastSaved >= group.LastUSaved) && (now >= group.LastUSaved + group.UnchangedInterval));
 }
 
 chrono::milliseconds TMQTTDBLogger::ProcessTimer()
@@ -236,7 +234,7 @@ chrono::milliseconds TMQTTDBLogger::ProcessTimer()
     }
 
 #ifndef NBENCHMARK
-    TBenchmark benchmark("Bulk processing took ", false);
+    TBenchmark benchmark("Bulk processing took", false);
 #endif
 
     chrono::seconds timeout = min(Cache.Groups[0].ChangedInterval, Cache.Groups[0].UnchangedInterval);
@@ -256,7 +254,9 @@ chrono::milliseconds TMQTTDBLogger::ProcessTimer()
                 channel.second.LastSaved = startTime;
                 channel.second.Changed   = false;
             }
-            LOG(Debug) << "\"" << group.Name << "\" " << channel.first << ": " << saveStatus;
+            if (::Debug.IsEnabled()) {
+                LOG(Debug) << "\"" << group.Name << "\" " << channel.first << ": " << saveStatus;
+            }
         }
 
         if (saved) {
@@ -282,7 +282,7 @@ chrono::milliseconds TMQTTDBLogger::ProcessTimer()
 Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
 {
 #ifndef NBENCHMARK
-    TBenchmark benchmark("RPC request took ");
+    TBenchmark benchmark("RPC request took");
 #endif
 
     LOG(Info) << "Run RPC get_channels()";
@@ -396,7 +396,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     LOG(Info) << "Run RPC get_values()";
 
 #ifndef NBENCHMARK
-    TBenchmark benchmark("get_values() took ");
+    TBenchmark benchmark("get_values() took");
 #endif
 
     if (!params.isMember("channels"))
@@ -467,7 +467,7 @@ TBenchmark::~TBenchmark()
 {
     if (Enabled) {
         high_resolution_clock::time_point stop = high_resolution_clock::now();
-        LOG(Info) << Message << duration_cast<milliseconds>(stop - Start).count() << " ms";
+        LOG(Info) << Message << " " << duration_cast<milliseconds>(stop - Start).count() << " ms";
     }
 }
 

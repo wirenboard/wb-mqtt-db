@@ -38,11 +38,11 @@ namespace
 
         // save new channels table
         DB.exec("CREATE TABLE channels ( "
-                 "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                 "device VARCHAR(255), "
-                 "control VARCHAR(255), "
-                 "UNIQUE(device,control) "
-                 ")");
+                "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "device VARCHAR(255), "
+                "control VARCHAR(255), "
+                "UNIQUE(device,control) "
+                ")");
 
         // save unique channels to new channels table and update keys in data table
         {
@@ -54,16 +54,16 @@ namespace
             while (query.executeStep()) {
                 TChannelName curName(query.getColumn(1), query.getColumn(2));
                 if (curName == prevName) {
-                    SQLite::Statement updateQuery(DB,
-                                                  "UPDATE data SET channel=? WHERE channel=?");
+                    SQLite::Statement updateQuery(DB, "UPDATE data SET channel=? WHERE channel=?");
                     updateQuery.bind(1, prevId);
                     updateQuery.bind(2, query.getColumn(0).getInt());
                     updateQuery.exec();
                 } else {
                     prevName = curName;
                     prevId   = query.getColumn(0).getInt();
-                    SQLite::Statement insertQuery(DB,
-                                                  "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
+                    SQLite::Statement insertQuery(
+                        DB,
+                        "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
                     insertQuery.bind(1, prevId);
                     insertQuery.bind(2, curName.Device);
                     insertQuery.bind(3, curName.Control);
@@ -80,20 +80,20 @@ namespace
 
         // create new data table
         DB.exec("CREATE TABLE data ("
-                 "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
-                 "channel INTEGER,"
-                 "value VARCHAR(255),"
-                 "timestamp INTEGER DEFAULT(0),"
-                 "group_id INTEGER,"
-                 "max VARCHAR(255),"
-                 "min VARCHAR(255),"
-                 "retained INTEGER"
-                 ")");
+                "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "channel INTEGER,"
+                "value VARCHAR(255),"
+                "timestamp INTEGER DEFAULT(0),"
+                "group_id INTEGER,"
+                "max VARCHAR(255),"
+                "min VARCHAR(255),"
+                "retained INTEGER"
+                ")");
 
         // copy all data without device field
         DB.exec("INSERT INTO data "
-                 "SELECT uid, channel, value, timestamp, group_id, max, min, retained "
-                 "FROM data_old");
+                "SELECT uid, channel, value, timestamp, group_id, max, min, retained "
+                "FROM data_old");
 
         // drop old data table
         DB.exec("DROP TABLE data_old");
@@ -140,6 +140,17 @@ TSqliteStorage::TSqliteStorage(const string& dbFile)
     LOG(Info) << "Analyzing data table";
     DB->exec("ANALYZE data");
     DB->exec("ANALYZE sqlite_master");
+
+    InsertRowQuery.reset(new SQLite::Statement(
+        *DB,
+        "INSERT INTO data (channel, value, group_id, min, max, retained, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, ?, strftime(\"%s\", 'now') * 1000)"));
+
+    CleanChannelQuery.reset(
+        new SQLite::Statement(*DB, "DELETE FROM data WHERE channel = ? ORDER BY rowid ASC LIMIT ?"));
+
+    CleanGroupQuery.reset(
+        new SQLite::Statement(*DB, "DELETE FROM data WHERE group_id = ? ORDER BY rowid ASC LIMIT ?"));
 
     LOG(Info) << "DB initialization is done";
 
@@ -235,7 +246,7 @@ void TSqliteStorage::Load(TLoggerCache& cache)
             group.StorageId = it->second;
         } else {
             SQLite::Statement query(*DB, "INSERT INTO groups (group_id) VALUES (?) ");
-            query.bind(1, group.Name);
+            query.bindNoCopy(1, group.Name);
             query.exec();
             group.StorageId = DB->getLastInsertRowid();
         }
@@ -453,31 +464,29 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
 
     LOG(Debug) << "Resulting channel ID for this request is " << channel.StorageId;
 
-    SQLite::Statement insert_row_query(*DB, "INSERT INTO data (channel, value, group_id, min, max, \
-                                                    retained, timestamp) VALUES (?, ?, ?, ?, ?, ?, strftime(\"%s\", 'now') * 1000)");
-
-    insert_row_query.bind(1, channel.StorageId);
-    insert_row_query.bind(3, group.StorageId);
+    InsertRowQuery->bind(1, channel.StorageId);
+    InsertRowQuery->bind(3, group.StorageId);
 
     // min, max and average
     if (channel.Accumulated && channel.Changed) {
         auto&  accum = channel.Accumulator;
         double val   = accum.ValueCount > 0 ? accum.Sum / accum.ValueCount : 0.0; // 0.0 - error value
 
-        insert_row_query.bind(2, val); // avg
+        InsertRowQuery->bind(2, val); // avg
 
-        insert_row_query.bind(4, accum.Min); // min
-        insert_row_query.bind(5, accum.Max); // max
+        InsertRowQuery->bind(4, accum.Min); // min
+        InsertRowQuery->bind(5, accum.Max); // max
 
         accum.Reset();
     } else {
-        insert_row_query.bind(2, channel.LastValue); // avg == value
-        insert_row_query.bind(4);                    // bind NULL values
-        insert_row_query.bind(5);                    // bind NULL values
+        InsertRowQuery->bindNoCopy(2, channel.LastValue); // avg == value
+        InsertRowQuery->bind(4);                          // bind NULL values
+        InsertRowQuery->bind(5);                          // bind NULL values
     }
 
-    insert_row_query.bind(6, channel.Retained ? 1 : 0);
-    insert_row_query.exec();
+    InsertRowQuery->bind(6, channel.Retained ? 1 : 0);
+    InsertRowQuery->exec();
+    InsertRowQuery->reset();
 
     ++channel.RecordCount;
 
@@ -486,18 +495,15 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
 
     if (group.MaxChannelRecords > 0) {
         if (channel.RecordCount > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            SQLite::Statement clean_channel_query(
-                *DB,
-                "DELETE FROM data WHERE channel = ? ORDER BY rowid ASC LIMIT ?");
-            clean_channel_query.bind(1, channel.StorageId);
-            clean_channel_query.bind(2, channel.RecordCount - group.MaxChannelRecords);
-
-            clean_channel_query.exec();
+            CleanChannelQuery->bind(1, channel.StorageId);
+            CleanChannelQuery->bind(2, channel.RecordCount - group.MaxChannelRecords);
+            CleanChannelQuery->exec();
+            CleanChannelQuery->reset();
 
             LOG(Warn) << "Channel data limit is reached: channel " << channelName << ", row count "
                       << channel.RecordCount << ", limit " << group.MaxChannelRecords;
 
-            LOG(Debug) << clean_channel_query.getQuery();
+            LOG(Debug) << "Clear channel id = " << channel.StorageId;
 
             channel.RecordCount = group.MaxChannelRecords;
         }
@@ -506,17 +512,15 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
     ++group.RecordCount;
     if (group.MaxRecords > 0) {
         if (group.RecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            SQLite::Statement clean_group_query(
-                *DB,
-                "DELETE FROM data WHERE group_id = ? ORDER BY rowid ASC LIMIT ?");
-            clean_group_query.bind(1, group.StorageId);
-            clean_group_query.bind(2, group.RecordCount - group.MaxRecords);
-            clean_group_query.exec();
+            CleanGroupQuery->bind(1, group.StorageId);
+            CleanGroupQuery->bind(2, group.RecordCount - group.MaxRecords);
+            CleanGroupQuery->exec();
+            CleanGroupQuery->reset();
 
             LOG(Warn) << "Group data limit is reached: group " << group.Name << ", row count "
                       << group.RecordCount << ", limit " << group.MaxRecords;
 
-            LOG(Debug) << clean_group_query.getQuery();
+            LOG(Debug) << "Clear group id = " << group.StorageId;
 
             group.RecordCount = group.MaxRecords;
         }
@@ -546,8 +550,8 @@ void TSqliteStorage::GetOrCreateChannelId(const TChannelName& channelName, TChan
 
     SQLite::Statement query(*DB, "INSERT INTO channels (device, control) VALUES (?, ?) ");
 
-    query.bind(1, channelName.Device);
-    query.bind(2, channelName.Control);
+    query.bindNoCopy(1, channelName.Device);
+    query.bindNoCopy(2, channelName.Control);
     query.exec();
 
     channel.StorageId             = DB->getLastInsertRowid();
