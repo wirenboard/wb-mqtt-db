@@ -34,23 +34,49 @@ DB_BIN=wb-mqtt-db
 SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
-OBJ=main.o config.o log.o sqlite_storage.o dblogger.o
+OBJ=config.o log.o sqlite_storage.o dblogger.o
 DB_CONFCONVERT=wb-mqtt-db-confconvert
+
+TEST_SOURCES= 							\
+			$(TEST_DIR)/test_main.cpp	\
+			$(TEST_DIR)/config.test.cpp	\
+
+TEST_DIR=test
+export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
+
+TEST_OBJECTS=$(TEST_SOURCES:.cpp=.o)
+TEST_BIN=wb-mqtt-db-test
+TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
 
 .PHONY: all clean
 
 all : $(DB_BIN)
 
-
-$(DB_BIN): $(OBJ) $(SQLITECPP_OBJ)
+$(DB_BIN): main.o $(OBJ) $(SQLITECPP_OBJ)
 	${CXX} $^ ${LDFLAGS} -o $@
 
 %.o: %.cpp
 	${CXX} -c $< -o $@ ${CXXFLAGS};
 
+$(TEST_DIR)/$(TEST_BIN): $(OBJ) $(SQLITECPP_OBJ) $(TEST_OBJECTS)
+	${CXX} $^ $(LDFLAGS) $(TEST_LIBS) -o $@ -fno-lto
+
+test: $(TEST_DIR)/$(TEST_BIN)
+	rm -f $(TEST_DIR)/*.dat.out
+	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
+		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
+		if [ $$? = 180 ]; then \
+			echo "*** VALGRIND DETECTED ERRORS ***" 1>& 2; \
+			exit 1; \
+		else $(TEST_DIR)/abt.sh show; exit 1; fi; \
+    else \
+        $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
+	fi
+
 clean :
 	-rm -f *.o $(DB_BIN)
 	-rm -f $(SQLITECPP_DIR)/*.o
+	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)
 
 install: all
 	install -d $(DESTDIR)/var/lib/wirenboard/db
