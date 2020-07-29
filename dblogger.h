@@ -51,13 +51,15 @@ std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
 
 struct TAccumulator
 {
-    int    ValueCount = 0;
-    double Sum        = 0.0;
-    double Min        = 0.0;
-    double Max        = 0.0;
+    uint32_t ValueCount = 0;
+    double   Sum        = 0.0;
+    double   Min        = 0.0;
+    double   Max        = 0.0;
 
-    void Reset();
-    bool Update(const std::string& mqttPayload);
+    void   Reset();
+    bool   Update(const std::string& mqttPayload);
+    bool   HasValues() const;
+    double Average() const;
 };
 
 struct TChannel
@@ -71,8 +73,8 @@ struct TChannel
 
     TAccumulator Accumulator;
 
-    //! Channel's last modification time
-    std::chrono::system_clock::time_point LastChanged;
+    //! Last value receive time
+    std::chrono::system_clock::time_point LastValueTime;
 
     //! Channel's last save time
     std::chrono::steady_clock::time_point LastSaved;
@@ -83,8 +85,7 @@ struct TChannel
     //! True if channel's LastValue has been modified since last save to storage
     bool Changed = false;
 
-    bool Accumulated = false;
-    bool Retained    = false;
+    bool Retained = false;
 };
 
 struct TLoggingGroup
@@ -119,6 +120,10 @@ struct TLoggingGroup
 
     //! Number of records of the group in DB
     int RecordCount = 0;
+
+    bool MatchPatterns(const std::string& mqttTopic) const;
+
+    std::chrono::steady_clock::time_point NextSaveCheckTime() const;
 };
 
 struct TLoggerCache
@@ -170,13 +175,6 @@ public:
                             std::chrono::milliseconds             minInterval) = 0;
 };
 
-struct TMqttMsg
-{
-    TLoggingGroup&                        Group;
-    WBMQTT::TMqttMessage                  Message;
-    std::chrono::system_clock::time_point ReceiveTime;
-};
-
 class TMQTTDBLogger
 {
 public:
@@ -195,20 +193,21 @@ public:
 private:
     struct TMqttMsg
     {
-        TLoggingGroup&                        Group;
         WBMQTT::TMqttMessage                  Message;
         std::chrono::system_clock::time_point ReceiveTime;
     };
 
-    std::chrono::milliseconds ProcessTimer();
+    std::chrono::steady_clock::time_point ProcessTimer(std::chrono::steady_clock::time_point nextSaveTime);
 
     void ProcessMessages(std::queue<TMqttMsg>& messages);
 
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
+    std::mutex                            CacheMutex;
     TLoggerCache                          Cache;
     WBMQTT::PMqttClient                   MqttClient;
+    std::mutex                            StorageMutex;
     std::unique_ptr<IStorage>             Storage;
     WBMQTT::PMqttRpcServer                RpcServer;
     std::mutex                            Mutex;
@@ -216,7 +215,6 @@ private:
     bool                                  Active;
     std::queue<TMqttMsg>                  MessagesQueue;
     std::chrono::seconds                  GetValuesRpcRequestTimeout;
-    std::chrono::steady_clock::time_point NextSaveTime;
 };
 
 class TBenchmark

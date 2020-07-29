@@ -4,6 +4,7 @@
 
 #include <wblib/exceptions.h>
 #include <wblib/json_utils.h>
+#include <wblib/mqtt.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -94,6 +95,31 @@ void TAccumulator::Reset()
     Sum = Min = Max = 0.0;
 }
 
+bool TAccumulator::HasValues() const
+{
+    return (ValueCount > 1);
+}
+
+double TAccumulator::Average() const
+{
+    return (ValueCount > 0 ? Sum / double(ValueCount) : 0.0); // 0.0 - error value
+}
+
+bool TLoggingGroup::MatchPatterns(const std::string& mqttTopic) const
+{
+    for (auto& pattern : MqttTopicPatterns) {
+        if (WBMQTT::TopicMatchesSub(pattern, mqttTopic)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::chrono::steady_clock::time_point TLoggingGroup::NextSaveCheckTime() const
+{
+    return min(LastSaved + ChangedInterval, LastUSaved + UnchangedInterval);
+}
+
 TMQTTDBLogger::TMQTTDBLogger(PMqttClient               mqttClient,
                              const TLoggerCache&       cache,
                              std::unique_ptr<IStorage> storage,
@@ -102,26 +128,23 @@ TMQTTDBLogger::TMQTTDBLogger(PMqttClient               mqttClient,
     : Cache(cache), MqttClient(mqttClient), Storage(std::move(storage)), RpcServer(rpcServer),
       Active(false), GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
 {
+    std::vector<std::string> patterns;
+
     for (auto& group : Cache.Groups) {
         for (const auto& pattern : group.MqttTopicPatterns) {
-            MqttClient->Subscribe(
-                [&](const TMqttMessage& message) {
-                    {
-                        std::lock_guard<std::mutex> lg(Mutex);
-                        MessagesQueue.push({group, message, system_clock::now()});
-                    }
-                    WakeupCondition.notify_all();
-                },
-                pattern);
+            patterns.push_back(pattern);
         }
     }
-
-    RpcServer->RegisterMethod("history",
-                              "get_values",
-                              bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
-    RpcServer->RegisterMethod("history",
-                              "get_channels",
-                              bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
+    MqttClient->Subscribe(
+        [&](const TMqttMessage& message) {
+            {
+                std::lock_guard<std::mutex> lg(Mutex);
+                LOG(Info) << message.Topic;
+                MessagesQueue.push({message, system_clock::now()});
+            }
+            WakeupCondition.notify_all();
+        },
+        patterns);
 }
 
 TMQTTDBLogger::~TMQTTDBLogger()
@@ -144,17 +167,29 @@ void TMQTTDBLogger::Start()
         Active = true;
     }
 
+
     Storage->Load(Cache);
+
+    RpcServer->RegisterMethod("history",
+                              "get_values",
+                              bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
+    RpcServer->RegisterMethod("history",
+                              "get_channels",
+                              bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
 
     MqttClient->Start();
     RpcServer->Start();
-    std::chrono::milliseconds timeout(5000);
-    NextSaveTime = steady_clock::now() + timeout;
+    steady_clock::time_point nextSaveTime = steady_clock::now();
+    for (auto& group : Cache.Groups) {
+        group.LastSaved  = nextSaveTime;
+        group.LastUSaved = nextSaveTime;
+    }
     while (Active) {
         queue<TMqttMsg> localQueue;
         {
             std::unique_lock<std::mutex> lk(Mutex);
-            WakeupCondition.wait_for(lk, timeout);
+            WakeupCondition.wait_for(lk,
+                                     duration_cast<seconds>(nextSaveTime - steady_clock::now()));
             if (!Active) {
                 return;
             }
@@ -163,7 +198,7 @@ void TMQTTDBLogger::Start()
             }
         }
         ProcessMessages(localQueue);
-        timeout = ProcessTimer();
+        nextSaveTime = ProcessTimer(nextSaveTime);
     }
 }
 
@@ -183,25 +218,30 @@ void TMQTTDBLogger::Stop()
 
 void TMQTTDBLogger::ProcessMessages(queue<TMqttMsg>& messages)
 {
+    std::lock_guard<std::mutex> lg(CacheMutex);
     while (!messages.empty()) {
         auto msg = messages.front();
         if (!msg.Message.Payload.empty()) {
-            auto& channelData = msg.Group.Channels[TChannelName(msg.Message.Topic)];
+            for (auto& group : Cache.Groups) {
+                if (group.MatchPatterns(msg.Message.Topic)) {
+                    auto& channelData = group.Channels[TChannelName(msg.Message.Topic)];
 
-            const char* status = "is same";
-            if (msg.Message.Payload != channelData.LastValue) {
-                status              = "IS CHANGED";
-                channelData.Changed = true;
-            }
-            LOG(Debug) << "\"" << msg.Group.Name << "\" " << msg.Message.Topic << ": \""
-                       << msg.Message.Payload << "\" " << status;
+                    const char* status = "is same";
+                    if (msg.Message.Payload != channelData.LastValue) {
+                        status              = "IS CHANGED";
+                        channelData.Changed = true;
+                    }
+                    LOG(Info) << "\"" << group.Name << "\" " << msg.Message.Topic << ": \""
+                              << msg.Message.Payload << "\" " << status;
 
-            if (channelData.Accumulator.Update(msg.Message.Payload)) {
-                channelData.Accumulated = true;
+                    channelData.Accumulator.Update(msg.Message.Payload);
+
+                    channelData.LastValue     = msg.Message.Payload;
+                    channelData.LastValueTime = msg.ReceiveTime;
+                    channelData.Retained      = msg.Message.Retained;
+                    break;
+                }
             }
-            channelData.LastValue   = msg.Message.Payload;
-            channelData.LastChanged = msg.ReceiveTime;
-            channelData.Retained    = msg.Message.Retained;
         }
         messages.pop();
     }
@@ -222,22 +262,25 @@ bool ShouldWriteChannel(steady_clock::time_point now,
     if (channel.Changed) {
         return (now >= group.LastSaved + group.ChangedInterval);
     }
-    return (( channel.LastSaved >= group.LastUSaved) && (now >= group.LastUSaved + group.UnchangedInterval));
+    return ((now >= channel.LastSaved + group.ChangedInterval) &&
+            (now >= group.LastUSaved + group.UnchangedInterval));
 }
 
-chrono::milliseconds TMQTTDBLogger::ProcessTimer()
+steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point nextSaveTime)
 {
-    auto startTime = steady_clock::now();
+    auto startTime = steady_clock::time_point(duration_cast<seconds>(steady_clock::now().time_since_epoch()));
 
-    if (NextSaveTime > startTime) {
-        return duration_cast<milliseconds>(NextSaveTime - startTime);
+    if (nextSaveTime > startTime) {
+        return nextSaveTime;
     }
 
 #ifndef NBENCHMARK
     TBenchmark benchmark("Bulk processing took", false);
 #endif
 
-    chrono::seconds timeout = min(Cache.Groups[0].ChangedInterval, Cache.Groups[0].UnchangedInterval);
+    nextSaveTime = Cache.Groups[0].NextSaveCheckTime();
+    std::lock_guard<std::mutex> lCache(CacheMutex);
+    std::lock_guard<std::mutex> lStorage(StorageMutex);
 
     for (auto& group : Cache.Groups) {
 
@@ -249,6 +292,8 @@ chrono::milliseconds TMQTTDBLogger::ProcessTimer()
             if (ShouldWriteChannel(startTime, group, channel.second)) {
                 saveStatus = (channel.second.Changed ? "save changed" : "save UNCHANGED");
                 Storage->WriteChannel(channel.first, channel.second, group);
+                channel.second.Accumulator.Reset();
+
                 processChanged           = processChanged && channel.second.Changed;
                 saved                    = true;
                 channel.second.LastSaved = startTime;
@@ -269,14 +314,12 @@ chrono::milliseconds TMQTTDBLogger::ProcessTimer()
 #endif
         }
 
-        timeout = min(timeout, min(group.ChangedInterval, group.UnchangedInterval));
+        nextSaveTime = min(nextSaveTime, group.NextSaveCheckTime());
     }
 
     Storage->Commit();
 
-    NextSaveTime = startTime + timeout;
-
-    return duration_cast<milliseconds>(NextSaveTime - steady_clock::now());
+    return nextSaveTime;
 }
 
 Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
@@ -287,13 +330,13 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
 
     LOG(Info) << "Run RPC get_channels()";
     Json::Value result;
-
+    std::lock_guard<std::mutex> lCache(CacheMutex);
     for (const auto& group : Cache.Groups) {
         for (const auto& channel : group.Channels) {
             Json::Value values;
             values["items"]   = channel.second.RecordCount;
             values["last_ts"] = Json::Value::Int64(
-                duration_cast<seconds>(channel.second.LastChanged.time_since_epoch()).count());
+                duration_cast<seconds>(channel.second.LastValueTime.time_since_epoch()).count());
 
             result["channels"][channel.first.Device + "/" + channel.first.Control] = values;
         }
@@ -408,6 +451,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         wb_throw(TBaseException, "unsupported request version");
     }
 
+//FIXME: !!!
     steady_clock::duration timeout = GetValuesRpcRequestTimeout;
     if (params.isMember("request_timeout")) {
         timeout = chrono::seconds(params["request_timeout"].asInt());
@@ -446,6 +490,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         channels.emplace_back(channelItem[0u].asString(), channelItem[1u].asString());
     }
 
+    std::lock_guard<std::mutex> lStorage(StorageMutex);
     // we request one extra row to know whether there are more than 'limit' available
     Storage->GetRecords(visitor,
                         channels,

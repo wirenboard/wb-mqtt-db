@@ -1,0 +1,16 @@
+Subscribe: /devices/+/controls/+ (QoS 0)
+Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
+Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
+Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
+Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
+Publish: /rpc/v1/db_logger/history/get_values/test: '{"id":1,"params":{"channels":[["wb-adc","Vin"],["wb-adc","A1"]],"ver":1,"timestamp":{"lt":954566430}}}' (QoS 0, retained)
+RPC get_records
+  wb-adc/Vin
+  wb-adc/A1
+  1970-01-01 05:00:00 - 2000-04-01 11:20:30
+  from -1
+  maxRecords 1
+  minInterval 0 ms
+Publish: /rpc/v1/db_logger/history/get_values/test/reply: '{"error":null,"id":1,"result":{"values":[{"c":1,"i":1,"retain":false,"t":954566430,"v":"test1"},{"c":1,"i":2,"max":30,"min":20,"retain":true,"t":954566430,"v":10}]}}
+' (QoS 2)
+stop: dblogger_test

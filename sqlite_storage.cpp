@@ -287,12 +287,12 @@ void TSqliteStorage::Load(TLoggerCache& cache)
                                          query.getColumn(1).getString());
                 LOG(Debug) << "Load " << channelName.Device << "/" << channelName.Control << " from "
                            << group->Name;
-                TChannel& channel   = group->Channels[channelName];
-                channel.StorageId   = query.getColumn(2).getInt();
-                auto d              = milliseconds(query.getColumn(4).getInt64());
-                channel.LastChanged = system_clock::time_point(d);
-                channel.LastValue   = query.getColumn(5).getString();
-                channel.RecordCount = query.getColumn(6).getInt();
+                TChannel& channel     = group->Channels[channelName];
+                channel.StorageId     = query.getColumn(2).getInt();
+                auto d                = milliseconds(query.getColumn(4).getInt64());
+                channel.LastValueTime = system_clock::time_point(d);
+                channel.LastValue     = query.getColumn(5).getString();
+                channel.RecordCount   = query.getColumn(6).getInt();
                 group->RecordCount += channel.RecordCount;
             }
         }
@@ -467,17 +467,10 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
     InsertRowQuery->bind(1, channel.StorageId);
     InsertRowQuery->bind(3, group.StorageId);
 
-    // min, max and average
-    if (channel.Accumulated && channel.Changed) {
-        auto&  accum = channel.Accumulator;
-        double val   = accum.ValueCount > 0 ? accum.Sum / accum.ValueCount : 0.0; // 0.0 - error value
-
-        InsertRowQuery->bind(2, val); // avg
-
-        InsertRowQuery->bind(4, accum.Min); // min
-        InsertRowQuery->bind(5, accum.Max); // max
-
-        accum.Reset();
+    if (channel.Accumulator.HasValues()) {
+        InsertRowQuery->bind(2, channel.Accumulator.Average());
+        InsertRowQuery->bind(4, channel.Accumulator.Min);
+        InsertRowQuery->bind(5, channel.Accumulator.Max);
     } else {
         InsertRowQuery->bindNoCopy(2, channel.LastValue); // avg == value
         InsertRowQuery->bind(4);                          // bind NULL values
@@ -492,7 +485,6 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
 
     // local cache is needed here since SELECT COUNT are extremely slow in sqlite
     // so we only ask DB at startup. This applies to two if blocks below.
-
     if (group.MaxChannelRecords > 0) {
         if (channel.RecordCount > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
             CleanChannelQuery->bind(1, channel.StorageId);
