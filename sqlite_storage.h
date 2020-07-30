@@ -3,6 +3,10 @@
 #include "SQLiteCpp/SQLiteCpp.h"
 #include "dblogger.h"
 
+/**
+ * @brief The class implements Istorage interface for SQLite.
+ * All methods are not threadsafe.
+ */
 class TSqliteStorage : public IStorage
 {
     std::unique_ptr<SQLite::Database>     DB;
@@ -26,15 +30,45 @@ class TSqliteStorage : public IStorage
     void GetOrCreateChannelId(const TChannelName& channelName, TChannel& channel);
 
 public:
+    /**
+     * @brief Construct a new TSqliteStorage object
+     *
+     * @param dbFile full path and name of .db file
+     */
     TSqliteStorage(const std::string& dbFile);
     ~TSqliteStorage();
 
+    /**
+     * @brief Load information about stored channels
+     *
+     * @param cache the object to fill with data from DB
+     */
     void Load(TLoggerCache& cache) override;
+
+    /**
+     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     */
     void WriteChannel(const TChannelName& channelName,
                       TChannel&           channel,
                       TLoggingGroup&      group) override;
+
+    /**
+     * @brief Save all modifications in DB
+     */
     void Commit() override;
 
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     * record
+     *
+     * @param visitor an object
+     * @param channels get recods only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting from the id
+     * @param maxRecords maximum records to get from storage
+     * @param minInterval minimum time between records
+     */
     void GetRecords(IRecordsVisitor&                      visitor,
                     const std::vector<TChannelName>&      channels,
                     std::chrono::system_clock::time_point startTime,

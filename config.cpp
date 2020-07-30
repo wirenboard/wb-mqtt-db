@@ -30,7 +30,7 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
 
     JSON::Get(root, "database", config.DBFile);
     JSON::Get(root, "debug", config.Debug);
-    JSON::Get(root, "request_timeout", config.RequestTimeout);
+    JSON::Get(root, "request_timeout", config.GetValuesRpcRequestTimeout);
 
     for (const auto& groupItem : root["groups"]) {
         TLoggingGroup group;

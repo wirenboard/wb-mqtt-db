@@ -13,8 +13,8 @@ struct TMQTTDBLoggerConfig
     TLoggerCache Cache;
     std::string  DBFile;
 
-    bool                 Debug          = false;
-    std::chrono::seconds RequestTimeout = std::chrono::seconds(DEFAULT_TIMEOUT_SEC);
+    bool                 Debug                      = false;
+    std::chrono::seconds GetValuesRpcRequestTimeout = std::chrono::seconds(DEFAULT_TIMEOUT_SEC);
 };
 
 /**

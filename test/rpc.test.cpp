@@ -27,7 +27,7 @@ namespace
             dt.tm_hour        = 10;
             dt.tm_min         = 20;
             dt.tm_sec         = 30;
-            ch.LastValueTime  = std::chrono::system_clock::from_time_t(mktime(&dt));
+            ch.LastValueTime  = std::chrono::system_clock::from_time_t(timegm(&dt));
             auto& ch2         = cache.Groups[0].Channels[{"wb-adc", "A1"}];
             ch2.RecordCount   = 1000;
             dt.tm_year        = 110;
@@ -36,7 +36,7 @@ namespace
             dt.tm_hour        = 11;
             dt.tm_min         = 21;
             dt.tm_sec         = 31;
-            ch2.LastValueTime = std::chrono::system_clock::from_time_t(mktime(&dt));
+            ch2.LastValueTime = std::chrono::system_clock::from_time_t(timegm(&dt));
         }
 
         void WriteChannel(const TChannelName& channelName, TChannel& channel, TLoggingGroup& group) {}
@@ -57,8 +57,8 @@ namespace
             }
             auto t1 = std::chrono::system_clock::to_time_t(startTime);
             auto t2 = std::chrono::system_clock::to_time_t(endTime);
-            Fixture.Emit() << "  " << std::put_time(std::localtime(&t1), "%Y-%m-%d %X") << " - "
-                           << std::put_time(std::localtime(&t2), "%Y-%m-%d %X");
+            Fixture.Emit() << "  " << std::put_time(std::gmtime(&t1), "%Y-%m-%d %X") << " - "
+                           << std::put_time(std::gmtime(&t2), "%Y-%m-%d %X");
             Fixture.Emit() << "  from " << startId;
             Fixture.Emit() << "  maxRecords " << maxRecords;
             Fixture.Emit() << "  minInterval " << minInterval.count() << " ms";
@@ -74,13 +74,13 @@ namespace
                                   1,
                                   {"wb-adc", "Vin"},
                                   "test1",
-                                  std::chrono::system_clock::from_time_t(mktime(&dt)),
+                                  std::chrono::system_clock::from_time_t(timegm(&dt)),
                                   false);
             visitor.ProcessRecord(2,
                                   1,
                                   {"wb-adc", "Vin"},
                                   10.0,
-                                  std::chrono::system_clock::from_time_t(mktime(&dt)),
+                                  std::chrono::system_clock::from_time_t(timegm(&dt)),
                                   20.0,
                                   30.0,
                                   true);
@@ -144,8 +144,10 @@ TEST_F(TRpcTest, get_records_v0)
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
                           std::chrono::seconds(5)));
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
+    auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
     future.Wait();
+    future2.Wait();
     Broker->Publish(
         "test",
         {{"/rpc/v1/db_logger/history/get_values/test",
@@ -167,8 +169,10 @@ TEST_F(TRpcTest, get_records_v1)
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
                           std::chrono::seconds(5)));
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
+    auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
     future.Wait();
+    future2.Wait();
     Broker->Publish(
         "test",
         {{"/rpc/v1/db_logger/history/get_values/test",

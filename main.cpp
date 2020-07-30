@@ -161,11 +161,12 @@ int main(int argc, char* argv[])
         TMQTTDBLoggerConfig config(
             LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
         WBMQTT::PMqttClient            mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
-        std::shared_ptr<TMQTTDBLogger> logger(new TMQTTDBLogger(mqttClient,
-                                                                config.Cache,
-                                                                std::make_unique<TSqliteStorage>(config.DBFile),
-                                                                WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"),
-                                                                config.RequestTimeout));
+        std::shared_ptr<TMQTTDBLogger> logger(
+            new TMQTTDBLogger(mqttClient,
+                              config.Cache,
+                              std::make_unique<TSqliteStorage>(config.DBFile),
+                              WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"),
+                              config.GetValuesRpcRequestTimeout));
 
         WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [=] { logger->Stop(); });
         initialized.Complete();

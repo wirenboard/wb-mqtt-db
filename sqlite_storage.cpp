@@ -15,6 +15,9 @@ using namespace std::chrono;
 
 namespace
 {
+    //! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR) entries
+    const float RECORDS_CLEAR_THRESHOLDR = 0.02;
+
     const char* DB_BACKUP_FILE_EXTENSION = ".backup";
     const int   WB_DB_VERSION            = 4;
 

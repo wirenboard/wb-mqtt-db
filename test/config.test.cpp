@@ -39,7 +39,7 @@ TEST_F(TConfigTest, good_config)
     TMQTTDBLoggerConfig c = LoadConfig(testRootDir + "/good/wb-mqtt-db.conf", shemaFile);
     ASSERT_TRUE(c.Debug);
     ASSERT_EQ(c.DBFile, "/var/lib/wirenboard/db/data.db");
-    ASSERT_EQ(c.RequestTimeout, std::chrono::seconds(1234));
+    ASSERT_EQ(c.GetValuesRpcRequestTimeout, std::chrono::seconds(1234));
     ASSERT_EQ(c.Cache.Groups.size(), 3);
 
     ASSERT_EQ(c.Cache.Groups[0].Name, "everything else");

@@ -7,13 +7,6 @@
 
 #include <wblib/mqtt.h>
 #include <wblib/rpc.h>
-#include <wblib/thread_safe.h>
-
-//! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR) entries
-const float RECORDS_CLEAR_THRESHOLDR = 0.02;
-
-//! loop will be interrupted at least once in this interval (in ms) for DB update event
-const int WB_DB_LOOP_TIMEOUT_MS = 10;
 
 /**
  * @brief Device name and control name pair for identificaition of a control
@@ -49,6 +42,9 @@ namespace std
 
 std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
 
+/**
+ * @brief The class holds minimum, maximum and summary of a series of values
+ */
 struct TAccumulator
 {
     uint32_t ValueCount = 0;
@@ -56,12 +52,26 @@ struct TAccumulator
     double   Min        = 0.0;
     double   Max        = 0.0;
 
-    void   Reset();
-    bool   Update(const std::string& mqttPayload);
-    bool   HasValues() const;
+    //! Clear state. All fields are set to 0
+    void Reset();
+
+    /**
+     * @brief Try to convert mqttPayload to number and hold it
+     *
+     * @param mqttPayload a string got from MQTT
+     * @return true mqttPayload is number and it is processed
+     * @return false mqttPayload can't be converted to number
+     */
+    bool Update(const std::string& mqttPayload);
+
+    //! ValueCount > 1
+    bool HasValues() const;
+
+    //! Average accumulated value or 0
     double Average() const;
 };
 
+//! Information about speceific channel
 struct TChannel
 {
     static const int UNDEFIDED_ID;
@@ -88,6 +98,7 @@ struct TChannel
     bool Retained = false;
 };
 
+//! A group of channels with storage settings
 struct TLoggingGroup
 {
     std::vector<std::string> MqttTopicPatterns;
@@ -121,9 +132,11 @@ struct TLoggingGroup
     //! Number of records of the group in DB
     int RecordCount = 0;
 
+    //! Check if mqttTopic matches any of MqttTopicPatterns
     bool MatchPatterns(const std::string& mqttTopic) const;
 
-    std::chrono::steady_clock::time_point NextSaveCheckTime() const;
+    //! Calculate timepoint of nearest save for the group
+    std::chrono::steady_clock::time_point GetNextSaveCheckTime() const;
 };
 
 struct TLoggerCache
@@ -131,6 +144,7 @@ struct TLoggerCache
     std::vector<TLoggingGroup> Groups;
 };
 
+//!
 class IRecordsVisitor
 {
 public:
@@ -153,19 +167,45 @@ public:
                                bool                                  retain) = 0;
 };
 
+/**
+ * @brief An interface for storages
+ */
 class IStorage
 {
 public:
     virtual ~IStorage();
 
+    /**
+     * @brief Load information about stored channels
+     *
+     * @param cache the object to fill with data from DB
+     */
     virtual void Load(TLoggerCache& cache) = 0;
 
+    /**
+     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     */
     virtual void WriteChannel(const TChannelName& channelName,
-                              TChannel&           channel_data,
+                              TChannel&           channel,
                               TLoggingGroup&      group) = 0;
 
+    /**
+     * @brief Save all modifications
+     */
     virtual void Commit() = 0;
 
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     * record
+     *
+     * @param visitor an object 
+     * @param channels get recods only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting from the id
+     * @param maxRecords maximum records to get from storage
+     * @param minInterval minimum time between records
+     */
     virtual void GetRecords(IRecordsVisitor&                      visitor,
                             const std::vector<TChannelName>&      channels,
                             std::chrono::system_clock::time_point startTime,
@@ -197,26 +237,29 @@ private:
         std::chrono::system_clock::time_point ReceiveTime;
     };
 
-    std::chrono::steady_clock::time_point ProcessTimer(std::chrono::steady_clock::time_point nextSaveTime);
+    std::chrono::steady_clock::time_point ProcessTimer(
+        std::chrono::steady_clock::time_point nextSaveTime);
 
     void ProcessMessages(std::queue<TMqttMsg>& messages);
 
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    std::mutex                            CacheMutex;
-    TLoggerCache                          Cache;
-    WBMQTT::PMqttClient                   MqttClient;
-    std::mutex                            StorageMutex;
-    std::unique_ptr<IStorage>             Storage;
-    WBMQTT::PMqttRpcServer                RpcServer;
-    std::mutex                            Mutex;
-    std::condition_variable               WakeupCondition;
-    bool                                  Active;
-    std::queue<TMqttMsg>                  MessagesQueue;
-    std::chrono::seconds                  GetValuesRpcRequestTimeout;
+    std::mutex                CacheMutex;
+    TLoggerCache              Cache;
+    WBMQTT::PMqttClient       MqttClient;
+    std::mutex                StorageMutex;
+    std::unique_ptr<IStorage> Storage;
+    WBMQTT::PMqttRpcServer    RpcServer;
+    std::mutex                Mutex;
+    std::condition_variable   WakeupCondition;
+    bool                      Active;
+    std::queue<TMqttMsg>      MessagesQueue;
+    std::chrono::seconds      GetValuesRpcRequestTimeout;
 };
 
+//! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of
+//! an object, prints the time into log.
 class TBenchmark
 {
     std::string                                    Message;
@@ -224,8 +267,18 @@ class TBenchmark
     bool                                           Enabled;
 
 public:
+    /**
+     * @brief Construct a new TBenchmark object
+     *
+     * @param message prefix for log message with spend time
+     * @param enabled true - print and calculate spend time in destructor, false - do nothig, wait
+     * Enable call
+     */
     TBenchmark(const std::string& message, bool enabled = true);
     ~TBenchmark();
 
+    /**
+     * @brief Enables spend time calculation
+     */
     void Enable();
 };

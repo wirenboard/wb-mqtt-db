@@ -115,7 +115,7 @@ bool TLoggingGroup::MatchPatterns(const std::string& mqttTopic) const
     return false;
 }
 
-std::chrono::steady_clock::time_point TLoggingGroup::NextSaveCheckTime() const
+std::chrono::steady_clock::time_point TLoggingGroup::GetNextSaveCheckTime() const
 {
     return min(LastSaved + ChangedInterval, LastUSaved + UnchangedInterval);
 }
@@ -278,7 +278,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
     TBenchmark benchmark("Bulk processing took", false);
 #endif
 
-    nextSaveTime = Cache.Groups[0].NextSaveCheckTime();
+    nextSaveTime = Cache.Groups[0].GetNextSaveCheckTime();
     std::lock_guard<std::mutex> lCache(CacheMutex);
     std::lock_guard<std::mutex> lStorage(StorageMutex);
 
@@ -314,7 +314,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point ne
 #endif
         }
 
-        nextSaveTime = min(nextSaveTime, group.NextSaveCheckTime());
+        nextSaveTime = min(nextSaveTime, group.GetNextSaveCheckTime());
     }
 
     Storage->Commit();
@@ -451,7 +451,6 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         wb_throw(TBaseException, "unsupported request version");
     }
 
-//FIXME: !!!
     steady_clock::duration timeout = GetValuesRpcRequestTimeout;
     if (params.isMember("request_timeout")) {
         timeout = chrono::seconds(params["request_timeout"].asInt());
@@ -460,7 +459,7 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
     Json::Value result;
     result["values"] = Json::Value(Json::arrayValue);
 
-    int rowLimit = 0;
+    int rowLimit = std::numeric_limits<int>::max() - 1;
     JSON::Get(params, "limit", rowLimit);
 
     TJsonRecordsVisitor visitor(result, protocolVersion, rowLimit, timeout);

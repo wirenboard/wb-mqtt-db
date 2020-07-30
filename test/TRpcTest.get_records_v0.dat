@@ -7,10 +7,10 @@ Publish: /rpc/v1/db_logger/history/get_values/test: '{"id":1,"params":{"channels
 RPC get_records
   wb-adc/Vin
   wb-adc/A1
-  1970-01-01 05:00:00 - 2000-04-01 11:20:30
+  1970-01-01 00:00:00 - 2000-04-01 05:20:30
   from -1
-  maxRecords 1
+  maxRecords 2147483647
   minInterval 0 ms
-Publish: /rpc/v1/db_logger/history/get_values/test/reply: '{"error":null,"id":1,"result":{"values":[{"control":"Vin","device":"wb-adc","retain":false,"timestamp":954566430,"uid":1,"value":"test1"},{"control":"Vin","device":"wb-adc","max":30,"min":20,"retain":true,"timestamp":954566430,"uid":2,"value":10}]}}
+Publish: /rpc/v1/db_logger/history/get_values/test/reply: '{"error":null,"id":1,"result":{"values":[{"control":"Vin","device":"wb-adc","retain":false,"timestamp":954584430,"uid":1,"value":"test1"},{"control":"Vin","device":"wb-adc","max":30,"min":20,"retain":true,"timestamp":954584430,"uid":2,"value":10}]}}
 ' (QoS 2)
 stop: dblogger_test
