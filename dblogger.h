@@ -74,23 +74,14 @@ struct TAccumulator
 //! Information about speceific channel
 struct TChannel
 {
-    static const int UNDEFIDED_ID;
-
-    //! Unique id in storage
-    int StorageId = UNDEFIDED_ID;
-
     std::string LastValue;
 
     TAccumulator Accumulator;
 
-    //! Last value receive time
-    std::chrono::system_clock::time_point LastValueTime;
+    bool HasUnsavedMessages = false;
 
     //! Channel's last save time
     std::chrono::steady_clock::time_point LastSaved;
-
-    //! Number of records of the channel in DB
-    int RecordCount = 0;
 
     //! True if channel's LastValue has been modified since last save to storage
     bool Changed = false;
@@ -123,9 +114,6 @@ struct TLoggingGroup
 
     std::unordered_map<TChannelName, TChannel> Channels;
 
-    //! Modified values last saving time
-    std::chrono::steady_clock::time_point LastSaved;
-
     //! Unmodified values last saving time
     std::chrono::steady_clock::time_point LastUSaved;
 
@@ -134,9 +122,6 @@ struct TLoggingGroup
 
     //! Check if mqttTopic matches any of MqttTopicPatterns
     bool MatchPatterns(const std::string& mqttTopic) const;
-
-    //! Calculate timepoint of nearest save for the group
-    std::chrono::steady_clock::time_point GetNextSaveCheckTime() const;
 };
 
 struct TLoggerCache
@@ -167,8 +152,18 @@ public:
                                bool                                  retain) = 0;
 };
 
+class IChannelVisitor
+{
+public:
+    virtual ~IChannelVisitor();
+
+    virtual void ProcessChannel(const TChannelName&                   channelName,
+                                uint32_t                              rowCount,
+                                std::chrono::system_clock::time_point lastRecordTime) = 0;
+};
+
 /**
- * @brief An interface for storages
+ * @brief An interface for storages. All methods must be threadsafe
  */
 class IStorage
 {
@@ -198,7 +193,7 @@ public:
      * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
      * record
      *
-     * @param visitor an object 
+     * @param visitor an object
      * @param channels get recods only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
@@ -213,6 +208,11 @@ public:
                             int64_t                               startId,
                             uint32_t                              maxRecords,
                             std::chrono::milliseconds             minInterval) = 0;
+
+    /**
+     * @brief Get channels from storage
+     */
+    virtual void GetChannels(IChannelVisitor& visitor) = 0;
 };
 
 class TMQTTDBLogger
@@ -231,31 +231,23 @@ public:
     void Stop();
 
 private:
-    struct TMqttMsg
-    {
-        WBMQTT::TMqttMessage                  Message;
-        std::chrono::system_clock::time_point ReceiveTime;
-    };
-
     std::chrono::steady_clock::time_point ProcessTimer(
-        std::chrono::steady_clock::time_point nextSaveTime);
+        std::chrono::steady_clock::time_point currentTime);
 
-    void ProcessMessages(std::queue<TMqttMsg>& messages);
+    void ProcessMessages(std::queue<WBMQTT::TMqttMessage>& messages);
 
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    std::mutex                CacheMutex;
-    TLoggerCache              Cache;
-    WBMQTT::PMqttClient       MqttClient;
-    std::mutex                StorageMutex;
-    std::unique_ptr<IStorage> Storage;
-    WBMQTT::PMqttRpcServer    RpcServer;
-    std::mutex                Mutex;
-    std::condition_variable   WakeupCondition;
-    bool                      Active;
-    std::queue<TMqttMsg>      MessagesQueue;
-    std::chrono::seconds      GetValuesRpcRequestTimeout;
+    TLoggerCache                     Cache;
+    WBMQTT::PMqttClient              MqttClient;
+    std::unique_ptr<IStorage>        Storage;
+    WBMQTT::PMqttRpcServer           RpcServer;
+    std::mutex                       Mutex;
+    std::condition_variable          WakeupCondition;
+    bool                             Active;
+    std::queue<WBMQTT::TMqttMessage> MessagesQueue;
+    std::chrono::seconds             GetValuesRpcRequestTimeout;
 };
 
 //! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of

@@ -55,6 +55,8 @@ namespace
                         std::chrono::milliseconds             minInterval)
         {
         }
+
+        void GetChannels(IChannelVisitor& visitor) {}
     };
 } // namespace
 
@@ -94,14 +96,47 @@ TEST_F(TDBLoggerTest, two_groups)
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
                           std::chrono::seconds(5)));
+
+    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
+    future.Wait();
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "2.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, true}});
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "2.000", 1, true}});
     Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "3.000", 1, true}});
     Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(3500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::seconds(8));
+    logger->Stop();
+    t.join();
+}
+
+TEST_F(TDBLoggerTest, two_overlapping_groups)
+{
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db3.conf", shemaFile).Cache);
+    std::shared_ptr<TMQTTDBLogger> logger(
+        new TMQTTDBLogger(Client,
+                          cache,
+                          std::make_unique<TFakeStorage>(*this),
+                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::chrono::seconds(5)));
+    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
+    std::thread t([=]() { logger->Start(); });
+    future.Wait();
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "2.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, true}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "3.000", 1, true}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
     Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
     std::this_thread::sleep_for(std::chrono::seconds(8));

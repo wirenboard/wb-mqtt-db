@@ -5,16 +5,26 @@
 
 /**
  * @brief The class implements Istorage interface for SQLite.
- * All methods are not threadsafe.
+ * All methods are threadsafe.
  */
 class TSqliteStorage : public IStorage
 {
-    std::unique_ptr<SQLite::Database>     DB;
-    std::unordered_map<TChannelName, int> StoredChannelIds;
-    std::unique_ptr<SQLite::Transaction>  Transaction;
-    std::unique_ptr<SQLite::Statement>    InsertRowQuery;
-    std::unique_ptr<SQLite::Statement>    CleanChannelQuery;
-    std::unique_ptr<SQLite::Statement>    CleanGroupQuery;
+    struct TChannelInfo
+    {
+        int                                   Id;
+        uint32_t                              RecordCount;
+        std::chrono::system_clock::time_point LastRecordTime;
+
+        TChannelInfo();
+    };
+
+    std::unique_ptr<SQLite::Database>              DB;
+    std::unordered_map<TChannelName, TChannelInfo> StoredChannelIds;
+    std::unique_ptr<SQLite::Transaction>           Transaction;
+    std::unique_ptr<SQLite::Statement>             InsertRowQuery;
+    std::unique_ptr<SQLite::Statement>             CleanChannelQuery;
+    std::unique_ptr<SQLite::Statement>             CleanGroupQuery;
+    std::mutex                                     Mutex;
 
     void CreateTables(int dbVersion);
     void CreateIndices();
@@ -27,7 +37,7 @@ class TSqliteStorage : public IStorage
     int  ReadDBVersion();
     void UpdateDB(int prev_version);
 
-    void GetOrCreateChannelId(const TChannelName& channelName, TChannel& channel);
+    TChannelInfo* GetOrCreateChannelId(const TChannelName& channelName);
 
 public:
     /**
@@ -75,5 +85,10 @@ public:
                     std::chrono::system_clock::time_point endTime,
                     int64_t                               startId,
                     uint32_t                              maxRecords,
-                    std::chrono::milliseconds             minInterval);
+                    std::chrono::milliseconds             minInterval) override;
+
+    /**
+     * @brief Get channels from storage
+     */
+    void GetChannels(IChannelVisitor& visitor) override;
 };

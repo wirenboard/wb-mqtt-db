@@ -21,6 +21,8 @@ namespace
     const char* DB_BACKUP_FILE_EXTENSION = ".backup";
     const int   WB_DB_VERSION            = 4;
 
+    const int UNDEFINED_ID = -1;
+
     string BackupFileName(const string& filename)
     {
         return filename + DB_BACKUP_FILE_EXTENSION;
@@ -107,6 +109,9 @@ namespace
         DB.exec("UPDATE variables SET value=\"4\" WHERE name=\"db_version\"");
     }
 } // namespace
+
+TSqliteStorage::TChannelInfo::TChannelInfo(): Id(UNDEFINED_ID), RecordCount(0)
+{}
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
 {
@@ -228,76 +233,48 @@ void TSqliteStorage::CreateIndices()
 void TSqliteStorage::Load(TLoggerCache& cache)
 {
     {
+        std::lock_guard<std::mutex> lg(Mutex);
         SQLite::Statement query(*DB, "SELECT int_id, device, control FROM channels");
+        SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid), MAX(timestamp)/1000 FROM data WHERE channel=?");
+
         while (query.executeStep()) {
+            rowCountQuery.reset();
+            rowCountQuery.bind(1, query.getColumn(0).getInt64());
+            rowCountQuery.executeStep();
             TChannelName name(query.getColumn(1), query.getColumn(2));
-            StoredChannelIds[name] = query.getColumn(0);
+            TChannelInfo info;
+            info.Id = query.getColumn(0);
+            info.RecordCount = rowCountQuery.getColumn(0);
+            if (!rowCountQuery.getColumn(1).isNull()) {
+                info.LastRecordTime = std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64());
+            }
+            StoredChannelIds[name] = info;
         }
     }
 
-    unordered_map<string, int> storedGroupIds;
+    unordered_map<string, std::pair<int, int>> storedGroupIds;
     {
         SQLite::Statement query(*DB, "SELECT int_id, group_id FROM groups");
+        SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid) FROM data WHERE group_id=?");
         while (query.executeStep()) {
-            storedGroupIds[query.getColumn(1).getText()] = query.getColumn(0);
+            rowCountQuery.reset();
+            rowCountQuery.bind(1, query.getColumn(0).getInt64());
+            rowCountQuery.executeStep();
+            storedGroupIds[query.getColumn(1).getText()] = {query.getColumn(0),
+                                                            rowCountQuery.getColumn(0)};
         }
     }
 
     for (auto& group : cache.Groups) {
         auto it = storedGroupIds.find(group.Name);
         if (it != storedGroupIds.end()) {
-            group.StorageId = it->second;
+            group.StorageId   = it->second.first;
+            group.RecordCount = it->second.second;
         } else {
             SQLite::Statement query(*DB, "INSERT INTO groups (group_id) VALUES (?) ");
             query.bindNoCopy(1, group.Name);
             query.exec();
             group.StorageId = DB->getLastInsertRowid();
-        }
-    }
-
-    {
-        LOG(Info) << "Fill channel's RowCount, LastChanged, LastValue...";
-        string dataQuery =
-            "SELECT c.device, c.control, c.int_id, d.group_id, d.timestamp, d.value, d.cn "
-            "FROM channels c "
-            "JOIN (SELECT d1.group_id, d1.channel, d1.timestamp, d1.value, d2.cn "
-            "    FROM (SELECT COUNT(timestamp) cn, MAX(timestamp) t, group_id, channel "
-            "            FROM data "
-            "            GROUP BY channel, group_id) d2 "
-            "    JOIN data d1 "
-            "    ON d1.timestamp = d2.t AND d1.group_id = d2.group_id AND d1.channel = d2.channel) d "
-            "ON c.int_id = d.channel "
-            "ORDER BY d.group_id";
-
-        SQLite::Statement query(*DB, dataQuery);
-
-        TLoggingGroup* group = nullptr;
-
-        while (query.executeStep()) {
-            int groupId = query.getColumn(3).getInt();
-
-            if (!group || group->StorageId != groupId) {
-                for (auto& g : cache.Groups) {
-                    if (g.StorageId == groupId) {
-                        group = &g;
-                        break;
-                    }
-                }
-            }
-
-            if (group) {
-                TChannelName channelName(query.getColumn(0).getString(),
-                                         query.getColumn(1).getString());
-                LOG(Debug) << "Load " << channelName.Device << "/" << channelName.Control << " from "
-                           << group->Name;
-                TChannel& channel     = group->Channels[channelName];
-                channel.StorageId     = query.getColumn(2).getInt();
-                auto d                = milliseconds(query.getColumn(4).getInt64());
-                channel.LastValueTime = system_clock::time_point(d);
-                channel.LastValue     = query.getColumn(5).getString();
-                channel.RecordCount   = query.getColumn(6).getInt();
-                group->RecordCount += channel.RecordCount;
-            }
         }
     }
 }
@@ -459,15 +436,16 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
                                   TChannel&           channel,
                                   TLoggingGroup&      group)
 {
+    std::lock_guard<std::mutex> lg(Mutex);
     if (!Transaction) {
         Transaction.reset(new SQLite::Transaction(*DB));
     }
 
-    GetOrCreateChannelId(channelName, channel);
+    TChannelInfo* channelInfo = GetOrCreateChannelId(channelName);
 
-    LOG(Debug) << "Resulting channel ID for this request is " << channel.StorageId;
+    LOG(Debug) << "Resulting channel ID for this request is " << channelInfo->Id;
 
-    InsertRowQuery->bind(1, channel.StorageId);
+    InsertRowQuery->bind(1, channelInfo->Id);
     InsertRowQuery->bind(3, group.StorageId);
 
     if (channel.Accumulator.HasValues()) {
@@ -484,23 +462,23 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
     InsertRowQuery->exec();
     InsertRowQuery->reset();
 
-    ++channel.RecordCount;
+    ++channelInfo->RecordCount;
 
     // local cache is needed here since SELECT COUNT are extremely slow in sqlite
     // so we only ask DB at startup. This applies to two if blocks below.
     if (group.MaxChannelRecords > 0) {
-        if (channel.RecordCount > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            CleanChannelQuery->bind(1, channel.StorageId);
-            CleanChannelQuery->bind(2, channel.RecordCount - group.MaxChannelRecords);
+        if (channelInfo->RecordCount > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
+            CleanChannelQuery->bind(1, channelInfo->Id);
+            CleanChannelQuery->bind(2, channelInfo->RecordCount - group.MaxChannelRecords);
             CleanChannelQuery->exec();
             CleanChannelQuery->reset();
 
             LOG(Warn) << "Channel data limit is reached: channel " << channelName << ", row count "
-                      << channel.RecordCount << ", limit " << group.MaxChannelRecords;
+                      << channelInfo->RecordCount << ", limit " << group.MaxChannelRecords;
 
-            LOG(Debug) << "Clear channel id = " << channel.StorageId;
+            LOG(Debug) << "Clear channel id = " << channelInfo->Id;
 
-            channel.RecordCount = group.MaxChannelRecords;
+            channelInfo->RecordCount = group.MaxChannelRecords;
         }
     }
 
@@ -524,22 +502,18 @@ void TSqliteStorage::WriteChannel(const TChannelName& channelName,
 
 void TSqliteStorage::Commit()
 {
+    std::lock_guard<std::mutex> lg(Mutex);
     if (Transaction) {
         Transaction->commit();
         Transaction.reset();
     }
 }
 
-void TSqliteStorage::GetOrCreateChannelId(const TChannelName& channelName, TChannel& channel)
+TSqliteStorage::TChannelInfo* TSqliteStorage::GetOrCreateChannelId(const TChannelName& channelName)
 {
-    if (channel.StorageId != TChannel::UNDEFIDED_ID)
-        return;
-
-    auto it = StoredChannelIds.find(channelName);
-    if (it != StoredChannelIds.end()) {
-        channel.StorageId = it->second;
-        return;
-    }
+    TSqliteStorage::TChannelInfo* channelInfo = &StoredChannelIds[channelName];
+    if (channelInfo->Id != UNDEFINED_ID)
+        return channelInfo;
 
     LOG(Info) << "Creating channel " << channelName;
 
@@ -549,8 +523,8 @@ void TSqliteStorage::GetOrCreateChannelId(const TChannelName& channelName, TChan
     query.bindNoCopy(2, channelName.Control);
     query.exec();
 
-    channel.StorageId             = DB->getLastInsertRowid();
-    StoredChannelIds[channelName] = channel.StorageId;
+    channelInfo->Id = DB->getLastInsertRowid();
+    return channelInfo;
 }
 
 void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
@@ -590,6 +564,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
     queryStr += " ORDER BY uid ASC LIMIT ?";
 
+    std::lock_guard<std::mutex> lg(Mutex);
     SQLite::Statement query(*DB, queryStr);
 
     int param_num = 0;
@@ -597,7 +572,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         int  channelId = -1;
         auto it        = StoredChannelIds.find(channel);
         if (it != StoredChannelIds.end()) {
-            channelId = it->second;
+            channelId = it->second.Id;
         }
         query.bind(++param_num, channelId);
     }
@@ -623,7 +598,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
         if (!query.getColumn(5).isNull()) {
             if (!visitor.ProcessRecord(recordId,
-                                       StoredChannelIds[channel],
+                                       StoredChannelIds[channel].Id,
                                        channel,
                                        query.getColumn(3).getDouble(),
                                        timestamp,
@@ -634,12 +609,22 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
         } else {
             if (!visitor.ProcessRecord(recordId,
-                                       StoredChannelIds[channel],
+                                       StoredChannelIds[channel].Id,
                                        channel,
                                        query.getColumn(3).getString(),
                                        timestamp,
                                        retain))
                 return;
         }
+    }
+}
+
+void TSqliteStorage::GetChannels(IChannelVisitor& visitor)
+{
+    std::lock_guard<std::mutex> lg(Mutex);
+    for (auto& channel : StoredChannelIds) {
+        visitor.ProcessChannel(channel.first,
+                               channel.second.RecordCount,
+                               channel.second.LastRecordTime);
     }
 }

@@ -15,29 +15,7 @@ namespace
     public:
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture) {}
 
-        void Load(TLoggerCache& cache)
-        {
-            auto& ch       = cache.Groups[0].Channels[{"wb-adc", "Vin"}];
-            ch.RecordCount = 100;
-            tm dt;
-            memset(&dt, 0, sizeof(tm));
-            dt.tm_year        = 100;
-            dt.tm_mon         = 3;
-            dt.tm_mday        = 1;
-            dt.tm_hour        = 10;
-            dt.tm_min         = 20;
-            dt.tm_sec         = 30;
-            ch.LastValueTime  = std::chrono::system_clock::from_time_t(timegm(&dt));
-            auto& ch2         = cache.Groups[0].Channels[{"wb-adc", "A1"}];
-            ch2.RecordCount   = 1000;
-            dt.tm_year        = 110;
-            dt.tm_mon         = 4;
-            dt.tm_mday        = 2;
-            dt.tm_hour        = 11;
-            dt.tm_min         = 21;
-            dt.tm_sec         = 31;
-            ch2.LastValueTime = std::chrono::system_clock::from_time_t(timegm(&dt));
-        }
+        void Load(TLoggerCache& cache) {}
 
         void WriteChannel(const TChannelName& channelName, TChannel& channel, TLoggingGroup& group) {}
 
@@ -84,6 +62,31 @@ namespace
                                   20.0,
                                   30.0,
                                   true);
+        }
+
+        void GetChannels(IChannelVisitor& visitor)
+        {
+            tm dt;
+            memset(&dt, 0, sizeof(tm));
+            dt.tm_year = 100;
+            dt.tm_mon  = 3;
+            dt.tm_mday = 1;
+            dt.tm_hour = 10;
+            dt.tm_min  = 20;
+            dt.tm_sec  = 30;
+            visitor.ProcessChannel({"wb-adc", "Vin"},
+                                   100,
+                                   std::chrono::system_clock::from_time_t(timegm(&dt)));
+
+            dt.tm_year = 110;
+            dt.tm_mon  = 4;
+            dt.tm_mday = 2;
+            dt.tm_hour = 11;
+            dt.tm_min  = 21;
+            dt.tm_sec  = 31;
+            visitor.ProcessChannel({"wb-adc", "A1"},
+                                   1000,
+                                   std::chrono::system_clock::from_time_t(timegm(&dt)));
         }
     };
 } // namespace
@@ -143,17 +146,17 @@ TEST_F(TRpcTest, get_records_v0)
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
                           std::chrono::seconds(5)));
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
+    auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
     future.Wait();
     future2.Wait();
-    Broker->Publish(
-        "test",
-        {{"/rpc/v1/db_logger/history/get_values/test",
-          "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":0,\"timestamp\":{\"lt\":954566430}}}",
-          0,
-          true}});
+    Broker->Publish("test",
+                    {{"/rpc/v1/db_logger/history/get_values/test",
+                      "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                      "\"ver\":0,\"timestamp\":{\"lt\":954566430}}}",
+                      0,
+                      true}});
     Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values/test/reply").Wait();
     logger->Stop();
     t.join();
@@ -168,17 +171,17 @@ TEST_F(TRpcTest, get_records_v1)
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
                           std::chrono::seconds(5)));
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
+    auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
     future.Wait();
     future2.Wait();
-    Broker->Publish(
-        "test",
-        {{"/rpc/v1/db_logger/history/get_values/test",
-          "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}}}",
-          0,
-          true}});
+    Broker->Publish("test",
+                    {{"/rpc/v1/db_logger/history/get_values/test",
+                      "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                      "\"ver\":1,\"timestamp\":{\"lt\":954566430}}}",
+                      0,
+                      true}});
     Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values/test/reply").Wait();
     logger->Stop();
     t.join();
