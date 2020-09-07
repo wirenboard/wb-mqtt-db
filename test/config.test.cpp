@@ -6,7 +6,7 @@ class TConfigTest : public testing::Test
 {
 protected:
     std::string testRootDir;
-    std::string shemaFile;
+    std::string schemaFile;
 
     void SetUp()
     {
@@ -17,7 +17,7 @@ protected:
         }
         testRootDir += "config_test_data";
 
-        shemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
+        schemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
     }
 };
 
@@ -30,13 +30,13 @@ TEST_F(TConfigTest, no_file)
 TEST_F(TConfigTest, bad_config)
 {
     for (size_t i = 0; i < 7; ++i) {
-        ASSERT_THROW(LoadConfig(testRootDir + "/bad/bad" + std::to_string(i) + ".conf", shemaFile), std::runtime_error) << "bad" << i <<".conf";
+        ASSERT_THROW(LoadConfig(testRootDir + "/bad/bad" + std::to_string(i) + ".conf", schemaFile), std::runtime_error) << "bad" << i <<".conf";
     }
 }
 
 TEST_F(TConfigTest, good_config)
 {
-    TMQTTDBLoggerConfig c = LoadConfig(testRootDir + "/good/wb-mqtt-db.conf", shemaFile);
+    TMQTTDBLoggerConfig c = LoadConfig(testRootDir + "/good/wb-mqtt-db.conf", schemaFile);
     ASSERT_TRUE(c.Debug);
     ASSERT_EQ(c.DBFile, "/var/lib/wirenboard/db/data.db");
     ASSERT_EQ(c.GetValuesRpcRequestTimeout, std::chrono::seconds(1234));

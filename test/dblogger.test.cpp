@@ -67,7 +67,7 @@ protected:
     WBMQTT::Testing::PFakeMqttClient Client;
 
     std::string testRootDir;
-    std::string shemaFile;
+    std::string schemaFile;
 
     void SetUp()
     {
@@ -81,7 +81,7 @@ protected:
         }
         testRootDir += "dblogger_test_data";
 
-        shemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
+        schemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
 
         Client->Start();
     }
@@ -89,7 +89,7 @@ protected:
 
 TEST_F(TDBLoggerTest, two_groups)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db2.conf", shemaFile).Cache);
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db2.conf", schemaFile).Cache);
     std::shared_ptr<TMQTTDBLogger> logger(
         new TMQTTDBLogger(Client,
                           cache,
@@ -118,7 +118,7 @@ TEST_F(TDBLoggerTest, two_groups)
 
 TEST_F(TDBLoggerTest, two_overlapping_groups)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db3.conf", shemaFile).Cache);
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db3.conf", schemaFile).Cache);
     std::shared_ptr<TMQTTDBLogger> logger(
         new TMQTTDBLogger(Client,
                           cache,

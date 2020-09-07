@@ -21,6 +21,6 @@ struct TMQTTDBLoggerConfig
  * @brief Load config from JSON file
  *
  * @param fileName full path and file name of config
- * @param shemaFileName full path and file name of config's JSON Schema
+ * @param schemaFileName full path and file name of config's JSON Schema
  */
-TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& shemaFileName);
+TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& schemaFileName);

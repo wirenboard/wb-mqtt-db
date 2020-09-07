@@ -21,10 +21,10 @@ namespace WBMQTT
     } // namespace JSON
 } // namespace WBMQTT
 
-TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& shemaFileName)
+TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& schemaFileName)
 {
     Json::Value root(JSON::Parse(fileName));
-    JSON::Validate(root, JSON::Parse(shemaFileName));
+    JSON::Validate(root, JSON::Parse(schemaFileName));
 
     TMQTTDBLoggerConfig config;
 
