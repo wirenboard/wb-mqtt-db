@@ -19,23 +19,27 @@ namespace WBMQTT
 
         template <> inline bool Is<milliseconds>(const Json::Value& value)
         {
-            return value.isUInt();
+            return value.isNumeric();
         }
 
         template <> inline milliseconds As<milliseconds>(const Json::Value& value)
         {
-            return milliseconds(value.asUInt());
+            auto t = value.asInt64();
+            if (t < 0) {
+                t = 0;
+            }
+            return milliseconds(t);
         }
 
         template <> inline bool Is<system_clock::time_point>(const Json::Value& value)
         {
-            return value.isUInt();
+            return value.isNumeric();
         }
 
         template <>
         inline system_clock::time_point As<system_clock::time_point>(const Json::Value& value)
         {
-            return system_clock::time_point(seconds(value.asUInt()));
+            return system_clock::time_point(seconds(value.asUInt64()));
         }
     } // namespace JSON
 } // namespace WBMQTT
@@ -496,15 +500,19 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
         channels.emplace_back(channelItem[0u].asString(), channelItem[1u].asString());
     }
 
-    // we request one extra row to know whether there are more than 'limit' available
-    Storage->GetRecords(visitor,
-                        channels,
-                        timestamp_gt,
-                        timestamp_lt,
-                        startingRecordId,
-                        rowLimit + 1,
-                        minInterval);
-
+    try {
+        // we request one extra row to know whether there are more than 'limit' available
+        Storage->GetRecords(visitor,
+                            channels,
+                            timestamp_gt,
+                            timestamp_lt,
+                            startingRecordId,
+                            rowLimit + 1,
+                            minInterval);
+    } catch (const std::exception& e) {
+        LOG(Error) << e.what();
+        throw;
+    }
     return visitor.Root;
 }
 

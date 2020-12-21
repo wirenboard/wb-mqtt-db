@@ -539,11 +539,11 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     string queryStr;
 
     if (minInterval.count() > 0)
-        queryStr = "SELECT uid, device, channel, AVG(value), timestamp, MIN(min), MAX(max), \
-                                retained  FROM data INDEXED BY data_topic_timestamp WHERE ";
+        queryStr = "SELECT uid, channel, AVG(value), timestamp, MIN(min), MAX(max), retained \
+                    FROM data INDEXED BY data_topic_timestamp WHERE ";
     else
-        queryStr = "SELECT uid, device, channel, value, timestamp, min, max, \
-                                retained FROM data INDEXED BY data_topic_timestamp WHERE ";
+        queryStr = "SELECT uid, channel, value, timestamp, min, max, retained \
+                    FROM data INDEXED BY data_topic_timestamp WHERE ";
 
     if (!channels.empty()) {
         queryStr += "channel IN ( ";
@@ -577,6 +577,11 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         query.bind(++param_num, channelId);
     }
 
+    std::unordered_map<int, TChannelName> channelIdToNameMap;
+    for(const auto& ch: StoredChannelIds) {
+        channelIdToNameMap.insert({ch.second.Id, ch.first});
+    }
+
     query.bind(++param_num, duration_cast<milliseconds>(startTime.time_since_epoch()).count());
     query.bind(++param_num, duration_cast<milliseconds>(endTime.time_since_epoch()).count());
     query.bind(++param_num, startId);
@@ -591,27 +596,28 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
     while (query.executeStep()) {
         int  recordId = query.getColumn(0).getInt();
-        bool retain   = (query.getColumn(7).getInt() > 0);
+        bool retain   = (query.getColumn(6).getInt() > 0);
 
-        TChannelName channel(query.getColumn(1).getString(), query.getColumn(2).getString());
-        system_clock::time_point timestamp(milliseconds(query.getColumn(4).getInt64()));
+        int channelId(query.getColumn(1).getInt());
+
+        system_clock::time_point timestamp(milliseconds(query.getColumn(3).getInt64()));
 
         if (!query.getColumn(5).isNull()) {
             if (!visitor.ProcessRecord(recordId,
-                                       StoredChannelIds[channel].Id,
-                                       channel,
-                                       query.getColumn(3).getDouble(),
+                                       channelId,
+                                       channelIdToNameMap[channelId],
+                                       query.getColumn(2).getDouble(),
                                        timestamp,
+                                       query.getColumn(4).getDouble(),
                                        query.getColumn(5).getDouble(),
-                                       query.getColumn(6).getDouble(),
                                        retain))
                 return;
 
         } else {
             if (!visitor.ProcessRecord(recordId,
-                                       StoredChannelIds[channel].Id,
-                                       channel,
-                                       query.getColumn(3).getString(),
+                                       channelId,
+                                       channelIdToNameMap[channelId],
+                                       query.getColumn(2).getString(),
                                        timestamp,
                                        retain))
                 return;

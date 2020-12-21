@@ -129,7 +129,9 @@ namespace
 int main(int argc, char* argv[])
 {
     WBMQTT::TMosquittoMqttConfig mqttConfig;
-    string                       configFileName("/etc/wb-mqtt-db.conf");
+    mqttConfig.Id = "wb-mqtt-db";
+
+    string configFileName("/etc/wb-mqtt-db.conf");
 
     ParseCommadLine(argc, argv, mqttConfig, configFileName);
     PrintStartupInfo(mqttConfig, configFileName);
