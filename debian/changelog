@@ -1,3 +1,16 @@
+wb-mqtt-db (2.0.1) unstable; urgency=medium
+
+  * MQTT client id is set before connection
+  * Error during selection of records from db is fixed 
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Fri, 18 Dec 2020 15:15:00 +0500
+
+wb-mqtt-db (2.0.0) unstable; urgency=medium
+
+  * port to libwbmqtt1
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Fri, 24 Jul 2020 13:37:01 +0500
+
 wb-mqtt-db (1.7.3) stable; urgency=medium
 
   * add new conditional dependencies for debian stretch support 

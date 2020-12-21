@@ -1,70 +1,92 @@
-ifeq ($(DEB_TARGET_ARCH),armel)
-CROSS_COMPILE=arm-linux-gnueabi-
+DEBUG?=0
+
+ifneq ($(DEB_HOST_MULTIARCH),)
+	CROSS_COMPILE ?= $(DEB_HOST_MULTIARCH)-
 endif
 
-CXX=$(CROSS_COMPILE)g++
-CXX_PATH := $(shell which $(CROSS_COMPILE)g++-4.7)
-
-CC=$(CROSS_COMPILE)gcc
-CC_PATH := $(shell which $(CROSS_COMPILE)gcc-4.7)
-
-ifneq ($(CXX_PATH),)
-	CXX=$(CROSS_COMPILE)g++-4.7
+ifeq ($(origin CC),default)
+	CC := $(CROSS_COMPILE)gcc
+endif
+ifeq ($(origin CXX),default)
+	CXX := $(CROSS_COMPILE)g++
 endif
 
-ifneq ($(CC_PATH),)
-	CC=$(CROSS_COMPILE)gcc-4.7
+CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include
+
+# We build armhf targets with an old version of sqlite
+CC_TARGET := $(shell $(CC) -dumpmachine)
+ifeq ($(CC_TARGET),arm-linux-gnueabihf)
+	CXXFLAGS+=-DSQLITE_USE_LEGACY_STRUCT
 endif
 
-DEBUG?=1
-
-CFLAGS=-Wall -std=c++0x -I.
-LDFLAGS= -lmosquittopp -lmosquitto -ljsoncpp -lwbmqtt -lsqlite3 -llog4cpp
+LDFLAGS= -ljsoncpp -lwbmqtt1 -lsqlite3
 
 ifeq ($(DEBUG), 1)
-	CFLAGS+=-ggdb -O0 -pg
+	CXXFLAGS+=-ggdb -O0 -pg
 	LDFLAGS+=-pg
 else
-	CFLAGS+=-Os -DNDEBUG
+	CXXFLAGS+=-Os -DNDEBUG
 endif
 
 CPPFLAGS=$(CFLAGS)
 
 DB_BIN=wb-mqtt-db
-SQLITECPP_DIR=SQLiteCpp
+SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
-OBJ=main.o dbinit.o dbmqtt.o db_rpc.o dbtimer.o
+OBJ=config.o log.o sqlite_storage.o dblogger.o
 DB_CONFCONVERT=wb-mqtt-db-confconvert
+
+TEST_SOURCES= 								\
+			$(TEST_DIR)/test_main.cpp		\
+			$(TEST_DIR)/config.test.cpp		\
+			$(TEST_DIR)/rpc.test.cpp		\
+			$(TEST_DIR)/dblogger.test.cpp	\
+
+TEST_DIR=test
+export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
+
+TEST_OBJECTS=$(TEST_SOURCES:.cpp=.o)
+TEST_BIN=wb-mqtt-db-test
+TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
 
 .PHONY: all clean
 
 all : $(DB_BIN)
 
-
-$(DB_BIN): $(OBJ) $(SQLITECPP_OBJ)
+$(DB_BIN): main.o $(OBJ) $(SQLITECPP_OBJ)
 	${CXX} $^ ${LDFLAGS} -o $@
 
 %.o: %.cpp
-	${CXX} -c $< -o $@ ${CFLAGS};
+	${CXX} -c $< -o $@ ${CXXFLAGS};
+
+$(TEST_DIR)/$(TEST_BIN): $(OBJ) $(SQLITECPP_OBJ) $(TEST_OBJECTS)
+	${CXX} $^ $(LDFLAGS) $(TEST_LIBS) -o $@ -fno-lto
+
+test: $(TEST_DIR)/$(TEST_BIN)
+	rm -f $(TEST_DIR)/*.dat.out
+	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
+		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
+		if [ $$? = 180 ]; then \
+			echo "*** VALGRIND DETECTED ERRORS ***" 1>& 2; \
+			exit 1; \
+		else $(TEST_DIR)/abt.sh show; exit 1; fi; \
+    else \
+        $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
+	fi
 
 clean :
 	-rm -f *.o $(DB_BIN)
 	-rm -f $(SQLITECPP_DIR)/*.o
+	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)
 
 install: all
-	install -d $(DESTDIR)
-	install -d $(DESTDIR)/etc
-	install -d $(DESTDIR)/usr/bin
-	install -d $(DESTDIR)/usr/lib
-	install -d $(DESTDIR)/var/lib/wirenboard
 	install -d $(DESTDIR)/var/lib/wirenboard/db
-	install -d $(DESTDIR)/usr/share/wb-mqtt-confed/schemas
 
-	install -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
-	install -m 0755  $(DB_CONFCONVERT) $(DESTDIR)/usr/bin/$(DB_CONFCONVERT)
-	install -m 0755  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
+	install -D -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
+	install -D -m 0755  $(DB_CONFCONVERT) $(DESTDIR)/usr/bin/$(DB_CONFCONVERT)
+	install -D -m 0755  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
 
-	install -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
-	install -m 0644  wb-mqtt-db.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json
+	install -D -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
+	install -D -m 0644  wb-mqtt-db.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json
 

@@ -1,0 +1,57 @@
+Subscribe: /devices/wb-adc/controls/Vin (QoS 0)
+Subscribe: /devices/wb-adc/controls/A1 (QoS 0)
+Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
+Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
+Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
+Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
+Publish: /devices/wb-adc/controls/Vin: '12.000' (QoS 1, retained)
+0
+Write "most specific" wb-adc/Vin
+  Last value: 12.000
+  Changed: 1
+  Accumulator value count: 1
+Commit
+Publish: /devices/wb-adc/controls/A1: '2.000' (QoS 1, retained)
+0
+Write "most specific2" wb-adc/A1
+  Last value: 2.000
+  Changed: 1
+  Accumulator value count: 1
+Commit
+Publish: /devices/wb-adc/controls/Vin: '13.000' (QoS 1, retained)
+Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1, retained)
+Publish: /devices/wb-adc/controls/A1: '3.000' (QoS 1, retained)
+Publish: /devices/wb-adc/controls/A1: '4.000' (QoS 1, retained)
+2
+Write "most specific" wb-adc/Vin
+  Last value: 14.000
+  Changed: 1
+  Accumulator value count: 2
+  Sum: 13.5
+  Min: 13
+  Max: 14
+Commit
+3
+Write "most specific2" wb-adc/A1
+  Last value: 4.000
+  Changed: 1
+  Accumulator value count: 2
+  Sum: 3.5
+  Min: 3
+  Max: 4
+Commit
+Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1, retained)
+Publish: /devices/wb-adc/controls/A1: '4.000' (QoS 1, retained)
+4
+Write "most specific2" wb-adc/A1
+  Last value: 4.000
+  Changed: 0
+  Accumulator value count: 1
+Commit
+6
+Write "most specific" wb-adc/Vin
+  Last value: 14.000
+  Changed: 0
+  Accumulator value count: 1
+Commit
+stop: dblogger_test

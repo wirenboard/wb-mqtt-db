@@ -1,167 +1,276 @@
 #pragma once
 
-#include <wbmqtt/utils.h>
-#include <wbmqtt/mqtt_wrapper.h>
-#include <wbmqtt/mqttrpc.h>
 #include <chrono>
+#include <queue>
 #include <string>
-#include <set>
 #include <unordered_map>
-#include "jsoncpp/json/json.h"
-#include  "SQLiteCpp/SQLiteCpp.h"
 
-static const int    DEFAULT_TIMEOUT = 9;
-static const int    WB_DB_VERSION = 3;
-static const float  RingBufferClearThreshold = 0.02; // ring buffer will be cleared on limit * (1 + RingBufferClearThreshold) entries
-static const int    WB_DB_LOOP_TIMEOUT = 10; // loop will be interrupted at least once in this interval (in ms) for
-                                             // DB update event
+#include <wblib/mqtt.h>
+#include <wblib/rpc.h>
 
-static const char * DB_BACKUP_FILE_EXTENSION = ".backup";
-inline std::string BackupFileName(const std::string &filename) {
-    return filename + DB_BACKUP_FILE_EXTENSION;
-}
-
-struct TLoggingChannel
-{
-    std::string Pattern;
-};
-
+/**
+ * @brief Device name and control name pair for identificaition of a control
+ */
 struct TChannelName
 {
-    std::string Device;
-    std::string Control;
+    std::string Device;  //! Device name from MQTT /devices/XXXX
+    std::string Control; //! Control name from MQTT /devices/+/controls/XXXX
 
-    bool operator==(const TChannelName& rhs) const {
-        return std::tie(this->Device, this->Control) == std::tie(rhs.Device, rhs.Control);
-    }
+    TChannelName() = default;
 
+    TChannelName(const std::string& mqttTopic);
+
+    TChannelName(const std::string& device, const std::string& control);
+
+    bool operator==(const TChannelName& rhs) const;
 };
 
 // hasher for TChannelName
-namespace std {
-    template<>
-    struct hash<TChannelName>
+namespace std
+{
+    template <> struct hash<TChannelName>
     {
         typedef TChannelName argument_type;
-        typedef std::size_t result_type;
+        typedef std::size_t  result_type;
 
-        result_type operator()(const argument_type &s) const
+        result_type operator()(const argument_type& s) const
         {
-            return std::hash<std::string>()(s.Device) ^
-                   std::hash<std::string>()(s.Control);
+            return std::hash<std::string>()(s.Device) ^ std::hash<std::string>()(s.Control);
         }
     };
+}; // namespace std
+
+std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
+
+/**
+ * @brief The class holds minimum, maximum and summary of a series of values
+ */
+struct TAccumulator
+{
+    uint32_t ValueCount = 0;
+    double   Sum        = 0.0;
+    double   Min        = 0.0;
+    double   Max        = 0.0;
+
+    //! Clear state. All fields are set to 0
+    void Reset();
+
+    /**
+     * @brief Try to convert mqttPayload to number and hold it
+     *
+     * @param mqttPayload a string got from MQTT
+     * @return true mqttPayload is number and it is processed
+     * @return false mqttPayload can't be converted to number
+     */
+    bool Update(const std::string& mqttPayload);
+
+    //! ValueCount > 1
+    bool HasValues() const;
+
+    //! Average accumulated value or 0
+    double Average() const;
 };
 
-std::ostream& operator<<(std::ostream& out, const struct TChannelName &name);
-
+//! Information about speceific channel
 struct TChannel
 {
-    TChannelName Name;
-
     std::string LastValue;
 
-    struct {
-        int ValueCount = 0;
-        double Sum = 0.0;
-        double Min = 0.0;
-        double Max = 0.0;
+    TAccumulator Accumulator;
 
-        void Reset() {
-            ValueCount = 0;
-            Sum = Min = Max = 0.0;
-        }
-    } Accumulator;
+    bool HasUnsavedMessages = false;
 
-    std::chrono::steady_clock::time_point LastProcessed;
+    //! Channel's last save time
+    std::chrono::steady_clock::time_point LastSaved;
 
-    int RowCount;
-
+    //! True if channel's LastValue has been modified since last save to storage
     bool Changed = false;
-    bool Accumulated = false;
+
     bool Retained = false;
 };
 
+//! A group of channels with storage settings
 struct TLoggingGroup
 {
-    std::vector<TLoggingChannel> Channels;
-    int Values = 0;
-    int ValuesTotal = 0;
-    int MinInterval = 0;
-    int MinUnchangedInterval = 0;
-    std::string Id;
-    int IntId;
+    std::vector<std::string> MqttTopicPatterns;
 
-    // internal fields - for timer processing
-    std::set<int> ChannelIds;
+    //! Maximum records in DB of a single channel in the group. Unlimited if 0
+    int MaxChannelRecords = 0;
 
-    std::chrono::steady_clock::time_point LastSaved;
+    //! Maximum records in DB of the group. Unlimited if 0
+    int MaxRecords = 0;
+
+    //! Interval of saving modified values
+    std::chrono::seconds ChangedInterval = std::chrono::seconds(0);
+
+    //! Interval of saving unmodified values
+    std::chrono::seconds UnchangedInterval = std::chrono::seconds(0);
+
+    //! Group name
+    std::string Name;
+
+    //! Unique id in storage
+    int StorageId;
+
+    std::unordered_map<TChannelName, TChannel> Channels;
+
+    //! Unmodified values last saving time
     std::chrono::steady_clock::time_point LastUSaved;
+
+    //! Number of records of the group in DB
+    int RecordCount = 0;
+
+    //! Check if mqttTopic matches any of MqttTopicPatterns
+    bool MatchPatterns(const std::string& mqttTopic) const;
 };
 
-typedef std::shared_ptr<TLoggingGroup> PLoggingGroup;
-
-struct TMQTTDBLoggerConfig
+struct TLoggerCache
 {
     std::vector<TLoggingGroup> Groups;
-    std::string DBFile;
-
-    bool Debug;
-    std::chrono::steady_clock::duration RequestTimeout;
 };
 
-class TMQTTDBLogger: public TMQTTPrefixedWrapper
+//!
+class IRecordsVisitor
 {
 public:
-    TMQTTDBLogger(const TMQTTDBLogger::TConfig& mqtt_config, const TMQTTDBLoggerConfig config,
-                  std::string prefix = "", std::string user = "", std::string password = "");
+    virtual ~IRecordsVisitor();
+
+    virtual bool ProcessRecord(int                                   recordId,
+                               int                                   channelNameId,
+                               const TChannelName&                   channelName,
+                               double                                averageValue,
+                               std::chrono::system_clock::time_point timestamp,
+                               double                                minValue,
+                               double                                maxValue,
+                               bool                                  retain) = 0;
+
+    virtual bool ProcessRecord(int                                   recordId,
+                               int                                   channelNameId,
+                               const TChannelName&                   channelName,
+                               const std::string&                    value,
+                               std::chrono::system_clock::time_point timestamp,
+                               bool                                  retain) = 0;
+};
+
+class IChannelVisitor
+{
+public:
+    virtual ~IChannelVisitor();
+
+    virtual void ProcessChannel(const TChannelName&                   channelName,
+                                uint32_t                              rowCount,
+                                std::chrono::system_clock::time_point lastRecordTime) = 0;
+};
+
+/**
+ * @brief An interface for storages. All methods must be threadsafe
+ */
+class IStorage
+{
+public:
+    virtual ~IStorage();
+
+    /**
+     * @brief Load information about stored channels
+     *
+     * @param cache the object to fill with data from DB
+     */
+    virtual void Load(TLoggerCache& cache) = 0;
+
+    /**
+     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     */
+    virtual void WriteChannel(const TChannelName& channelName,
+                              TChannel&           channel,
+                              TLoggingGroup&      group) = 0;
+
+    /**
+     * @brief Save all modifications
+     */
+    virtual void Commit() = 0;
+
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     * record
+     *
+     * @param visitor an object
+     * @param channels get recods only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting from the id
+     * @param maxRecords maximum records to get from storage
+     * @param minInterval minimum time between records
+     */
+    virtual void GetRecords(IRecordsVisitor&                      visitor,
+                            const std::vector<TChannelName>&      channels,
+                            std::chrono::system_clock::time_point startTime,
+                            std::chrono::system_clock::time_point endTime,
+                            int64_t                               startId,
+                            uint32_t                              maxRecords,
+                            std::chrono::milliseconds             minInterval) = 0;
+
+    /**
+     * @brief Get channels from storage
+     */
+    virtual void GetChannels(IChannelVisitor& visitor) = 0;
+};
+
+class TMQTTDBLogger
+{
+public:
+    TMQTTDBLogger(WBMQTT::PMqttClient       mqttClient,
+                  const TLoggerCache&       cache,
+                  std::unique_ptr<IStorage> storage,
+                  WBMQTT::PMqttRpcServer    rpcServer,
+                  std::chrono::seconds      getValuesRpcRequestTimeout);
+
     ~TMQTTDBLogger();
 
-    void OnConnect(int rc);
-    void OnMessage(const struct mosquitto_message *message);
-    void OnSubscribe(int mid, int qos_count, const int *granted_qos);
+    void Start();
 
-    void Init2();
-
-    Json::Value GetValues(const Json::Value& input);
-    Json::Value GetChannels(const Json::Value& input);
-
-    std::chrono::steady_clock::time_point ProcessTimer(std::chrono::steady_clock::time_point next_call);
+    void Stop();
 
 private:
-    void InitDB();
-    void CreateTables();
-    void CreateIndices();
-    int GetOrCreateChannelId(const TChannelName& channel);
-    int GetOrCreateDeviceId(const std::string& device);
-    void InitChannelIds();
-    void InitDeviceIds();
-    void InitGroupIds();
-    void InitCaches();
+    std::chrono::steady_clock::time_point ProcessTimer(
+        std::chrono::steady_clock::time_point currentTime);
 
-    bool CheckBackupFile();
-    void CreateBackupFile();
-    void RemoveBackupFile();
-    void RestoreBackupFile();
+    void ProcessMessages(std::queue<WBMQTT::TMqttMessage>& messages);
 
-    int ReadDBVersion();
-    void UpdateDB(int prev_version);
-    bool UpdateAccumulator(int channel_id, const std::string &payload);
-    void WriteChannel(TChannel &ch, TLoggingGroup &group);
+    Json::Value GetChannels(const Json::Value& params);
+    Json::Value GetValues(const Json::Value& params);
 
-    std::tuple<int, int> GetOrCreateIds(const std::string &device, const std::string &control);
-    std::tuple<int, int> GetOrCreateIds(const std::string &topic);
-    std::tuple<int, int> GetOrCreateIds(const TChannelName &name);
+    TLoggerCache                     Cache;
+    WBMQTT::PMqttClient              MqttClient;
+    std::unique_ptr<IStorage>        Storage;
+    WBMQTT::PMqttRpcServer           RpcServer;
+    std::mutex                       Mutex;
+    std::condition_variable          WakeupCondition;
+    bool                             Active;
+    std::queue<WBMQTT::TMqttMessage> MessagesQueue;
+    std::chrono::seconds             GetValuesRpcRequestTimeout;
+};
 
-    std::string Mask;
-    std::unique_ptr<SQLite::Database> DB;
-    TMQTTDBLoggerConfig LoggerConfig;
-    std::shared_ptr<TMQTTRPCServer> RPCServer;
-    std::unordered_map<TChannelName, int> ChannelIds;
-    std::unordered_map<std::string, int> DeviceIds;
+//! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of
+//! an object, prints the time into log.
+class TBenchmark
+{
+    std::string                                    Message;
+    std::chrono::high_resolution_clock::time_point Start;
+    bool                                           Enabled;
 
-    std::unordered_map<int, TChannel> ChannelDataCache;
-    std::unordered_map<int, int> GroupRowNumberCache;
+public:
+    /**
+     * @brief Construct a new TBenchmark object
+     *
+     * @param message prefix for log message with spend time
+     * @param enabled true - print and calculate spend time in destructor, false - do nothig, wait
+     * Enable call
+     */
+    TBenchmark(const std::string& message, bool enabled = true);
+    ~TBenchmark();
 
-    const int DBVersion = WB_DB_VERSION;
+    /**
+     * @brief Enables spend time calculation
+     */
+    void Enable();
 };

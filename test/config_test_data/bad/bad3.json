@@ -1,0 +1,5 @@
+{
+    "groups": [
+    ],
+    "database" : "/var/lib/wirenboard/db/data.db"
+}

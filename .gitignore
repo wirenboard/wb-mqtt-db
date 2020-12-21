@@ -37,6 +37,7 @@ wb-mqtt-db/debian/wb-mqtt-db/
 
 # Binary
 wb-mqtt-db
+wb-mqtt-db-test
 
 # Core files
 *.core
