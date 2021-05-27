@@ -1,3 +1,9 @@
+wb-mqtt-db (2.0.2) unstable; urgency=medium
+
+  * Info log messages number is reduced
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Thu, 27 May 2021 12:25:00 +0500
+
 wb-mqtt-db (2.0.1) unstable; urgency=medium
 
   * MQTT client id is set before connection

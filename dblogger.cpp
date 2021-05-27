@@ -229,7 +229,7 @@ void TMQTTDBLogger::ProcessMessages(queue<WBMQTT::TMqttMessage>& messages)
                         status              = "IS CHANGED";
                         channelData.Changed = true;
                     }
-                    LOG(Info) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
+                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
                               << "\" " << status;
 
                     channelData.Accumulator.Update(msg.Payload);
@@ -355,7 +355,7 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
     TBenchmark benchmark("RPC request took");
 #endif
 
-    LOG(Info) << "Run RPC get_channels()";
+    LOG(Debug) << "Run RPC get_channels()";
     TJsonChannelsVisitor visitor;
     Storage->GetChannels(visitor);
     return visitor.Root;
@@ -450,7 +450,7 @@ public:
 
 Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 {
-    LOG(Info) << "Run RPC get_values()";
+    LOG(Debug) << "Run RPC get_values()";
 
 #ifndef NBENCHMARK
     TBenchmark benchmark("get_values() took");
@@ -525,7 +525,7 @@ TBenchmark::~TBenchmark()
 {
     if (Enabled) {
         high_resolution_clock::time_point stop = high_resolution_clock::now();
-        LOG(Info) << Message << " " << duration_cast<milliseconds>(stop - Start).count() << " ms";
+        LOG(Debug) << Message << " " << duration_cast<milliseconds>(stop - Start).count() << " ms";
     }
 }
 
