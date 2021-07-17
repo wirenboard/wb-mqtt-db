@@ -6,8 +6,8 @@ Standards-Version: 3.9.2
 Build-Depends: debhelper (>= 10), 
                pkg-config, 
                libsqlite3-dev, 
-               libwbmqtt1-dev (>= 2.2.4),
-               libwbmqtt1-test-utils (>= 2.2.4)
+               libwbmqtt1-2-dev (>= 2.2.4),
+               libwbmqtt1-2-test-utils (>= 2.2.4)
 
 Package: wb-mqtt-db
 Architecture: any
