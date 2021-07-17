@@ -34,7 +34,7 @@ DB_BIN=wb-mqtt-db
 SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
-OBJ=config.o log.o sqlite_storage.o dblogger.o
+OBJ=config.o log.o sqlite_storage.o dblogger.o db_migrations.o
 DB_CONFCONVERT=wb-mqtt-db-confconvert
 
 TEST_SOURCES= 								\
@@ -42,6 +42,7 @@ TEST_SOURCES= 								\
 			$(TEST_DIR)/config.test.cpp		\
 			$(TEST_DIR)/rpc.test.cpp		\
 			$(TEST_DIR)/dblogger.test.cpp	\
+			$(TEST_DIR)/sqlite_storage.test.cpp	\
 
 TEST_DIR=test
 export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)

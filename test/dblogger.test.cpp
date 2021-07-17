@@ -12,21 +12,31 @@ namespace
         WBMQTT::Testing::TLoggedFixture&      Fixture;
         std::chrono::steady_clock::time_point StartTime;
         bool                                  HasRecords;
+        uint64_t                              ChannelId;
 
     public:
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture)
-            : Fixture(fixture), StartTime(std::chrono::steady_clock::now()), HasRecords(false)
+            : Fixture(fixture),
+              StartTime(std::chrono::steady_clock::now()),
+              HasRecords(false),
+              ChannelId(1)
         {
         }
 
-        void Load(TLoggerCache& cache) {}
+        PChannelInfo CreateChannel(const TChannelName& channelName) override
+        {
+            return CreateChannelPrivate(ChannelId++, channelName.Device, channelName.Control);
+        }
 
-        void WriteChannel(const TChannelName& channelName, TChannel& channel, TLoggingGroup& group)
+        void WriteChannel(TChannelInfo&                         channelInfo,
+                          const TChannel&                       channel,
+                          std::chrono::system_clock::time_point time,
+                          const std::string&                    groupName)
         {
             std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
             Fixture.Emit()
                 << std::chrono::duration_cast<std::chrono::seconds>(now - StartTime).count();
-            Fixture.Emit() << "Write \"" << group.Name << "\" " << channelName;
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName();
             Fixture.Emit() << "  Last value: " << channel.LastValue;
             Fixture.Emit() << "  Changed: " << channel.Changed;
             Fixture.Emit() << "  Accumulator value count: " << channel.Accumulator.ValueCount;
@@ -57,6 +67,8 @@ namespace
         }
 
         void GetChannels(IChannelVisitor& visitor) {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
+        void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
     };
 } // namespace
 

@@ -1,3 +1,10 @@
+wb-mqtt-db (2.1.0) stable; urgency=medium
+
+  * Data base structure is modified
+  * Database cleanup is fixed
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Sat, 17 Jul 2021 16:28:19 +0500
+
 wb-mqtt-db (2.0.2) unstable; urgency=medium
 
   * Info log messages number is reduced

@@ -12,6 +12,30 @@ using namespace WBMQTT;
 
 #define LOG(logger) ::logger.Log() << "[dblogger] "
 
+namespace
+{
+    //! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR) entries
+    const float RECORDS_CLEAR_THRESHOLDR = 0.02;
+
+    class TGroupsLoader: public IChannelVisitor
+    {
+        TLoggerCache& Cache;
+    public:
+        TGroupsLoader(TLoggerCache& cache): Cache(cache)
+        {}
+
+        void ProcessChannel(PChannelInfo channel) override
+        {
+            for (auto& group: Cache.Groups) {
+                std::string topic("/devices/" + channel->GetName().Device + "/controls/" + channel->GetName().Control);
+                if (group.MatchPatterns(topic)) {
+                    group.Channels[channel->GetName()].first = channel;
+                }
+            }
+        }
+    };
+}
+
 namespace WBMQTT
 {
     namespace JSON
@@ -43,19 +67,6 @@ namespace WBMQTT
         }
     } // namespace JSON
 } // namespace WBMQTT
-
-IStorage::~IStorage() {}
-
-IRecordsVisitor::~IRecordsVisitor() {}
-
-IChannelVisitor::~IChannelVisitor() {}
-
-TChannelName::TChannelName(const string& mqttTopic)
-{
-    vector<string> tokens(StringSplit(mqttTopic, '/'));
-    Device  = tokens[2];
-    Control = tokens[4];
-}
 
 TChannelName::TChannelName(const std::string& device, const std::string& control)
     : Device(device), Control(control)
@@ -119,6 +130,29 @@ bool TLoggingGroup::MatchPatterns(const std::string& mqttTopic) const
     return false;
 }
 
+TChannel& TLoggingGroup::GetChannelData(const TChannelName& channelName)
+{
+    return Channels[channelName].second;
+}
+
+std::vector<PChannelInfo> GetChannelInfos(const TLoggingGroup& group)
+{
+    std::vector<PChannelInfo> res;
+    for (const auto& channel: group.Channels) {
+        res.push_back(channel.second.first);
+    }
+    return res;
+}
+
+uint32_t GetRecordCount(const TLoggingGroup& group)
+{
+    uint32_t sum = 0;
+    for (const auto& channel: group.Channels) {
+        sum += channel.second.first->GetRecordCount();
+    }
+    return sum;
+}
+
 TMQTTDBLogger::TMQTTDBLogger(PMqttClient               mqttClient,
                              const TLoggerCache&       cache,
                              std::unique_ptr<IStorage> storage,
@@ -165,7 +199,8 @@ void TMQTTDBLogger::Start()
         Active = true;
     }
 
-    Storage->Load(Cache);
+    TGroupsLoader loader(Cache);
+    Storage->GetChannels(loader);
 
     auto nextSaveTime = steady_clock::now();
 
@@ -222,21 +257,24 @@ void TMQTTDBLogger::ProcessMessages(queue<WBMQTT::TMqttMessage>& messages)
         if (!msg.Payload.empty()) {
             for (auto& group : Cache.Groups) {
                 if (group.MatchPatterns(msg.Topic)) {
-                    auto& channelData = group.Channels[TChannelName(msg.Topic)];
+                    auto items = WBMQTT::StringSplit(msg.Topic, "/");
+                    if (items.size() > 4) {
+                        auto& channelData = group.GetChannelData(TChannelName(items[2], items[4]));
 
-                    const char* status = "is same";
-                    if (msg.Payload != channelData.LastValue) {
-                        status              = "IS CHANGED";
-                        channelData.Changed = true;
+                        const char* status = "is same";
+                        if (msg.Payload != channelData.LastValue) {
+                            status              = "IS CHANGED";
+                            channelData.Changed = true;
+                        }
+                        LOG(Debug) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
+                                << "\" " << status;
+
+                        channelData.Accumulator.Update(msg.Payload);
+
+                        channelData.LastValue          = msg.Payload;
+                        channelData.Retained           = msg.Retained;
+                        channelData.HasUnsavedMessages = true;
                     }
-                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
-                              << "\" " << status;
-
-                    channelData.Accumulator.Update(msg.Payload);
-
-                    channelData.LastValue          = msg.Payload;
-                    channelData.Retained           = msg.Retained;
-                    channelData.HasUnsavedMessages = true;
                     break;
                 }
             }
@@ -245,7 +283,7 @@ void TMQTTDBLogger::ProcessMessages(queue<WBMQTT::TMqttMessage>& messages)
     }
 }
 
-std::ostream& operator<<(std::ostream& out, const struct TChannelName& name)
+std::ostream& operator<<(std::ostream& out, const TChannelName& name)
 {
     out << name.Device << "/" << name.Control;
     return out;
@@ -275,6 +313,31 @@ struct TNextSaveTime
     }
 };
 
+void TMQTTDBLogger::CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel)
+{
+    if (group.MaxChannelRecords > 0) {
+        if (channel.GetRecordCount() > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
+            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName()
+                      << ", row count " << channel.GetRecordCount() 
+                      << ", limit " << group.MaxChannelRecords;
+            Storage->DeleteRecords(channel, channel.GetRecordCount() - group.MaxChannelRecords);
+        }
+    }
+}
+
+void TMQTTDBLogger::CheckGroupOverflow(const TLoggingGroup& group)
+{
+    if (group.MaxRecords > 0) {
+        auto groupRecordCount = GetRecordCount(group);
+        if (groupRecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
+            LOG(Warn) << "Group data limit is reached: group " << group.Name 
+                      << ", row count " << groupRecordCount
+                      << ", limit " << group.MaxRecords;
+            Storage->DeleteRecords(GetChannelInfos(group), groupRecordCount - group.MaxRecords);
+        }
+    }
+}
+
 steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point currentTime)
 {
 #ifndef NBENCHMARK
@@ -283,26 +346,38 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point cu
 
     TNextSaveTime next;
 
+    auto writeTime = system_clock::now();
+
     for (auto& group : Cache.Groups) {
 
-        bool onlyChangedWereProcessed = true;
-        bool saved                    = false;
+        bool saved = false;
 
         for (auto& channel : group.Channels) {
-            const char* saveStatus = "nothing to save";
-            if (ShouldWriteChannel(currentTime, group, channel.second)) {
-                saveStatus = (channel.second.Changed ? "save changed" : "save UNCHANGED");
-                Storage->WriteChannel(channel.first, channel.second, group);
-                channel.second.Accumulator.Reset();
+            const char*         saveStatus  = "nothing to save";
+            const TChannelName& channelName = channel.first;
+            PChannelInfo&       channelInfo = channel.second.first;
+            TChannel&           channelData = channel.second.second;
+            if (ShouldWriteChannel(currentTime, group, channelData)) {
+                saveStatus = (channelData.Changed ? "save changed" : "save UNCHANGED");
+                if (!channelInfo) {
+                    channelInfo = Storage->CreateChannel(channelName);
+                }
+                Storage->WriteChannel(*channelInfo, channelData, writeTime, group.Name);
+                saved = true;
 
-                onlyChangedWereProcessed = onlyChangedWereProcessed && channel.second.Changed;
-                saved                    = true;
-                channel.second.LastSaved = currentTime;
-                channel.second.Changed   = false;
-                channel.second.HasUnsavedMessages = false;
+                if (!channelData.Changed) {
+                    group.LastUSaved = currentTime;
+                }
+
+                channelData.Accumulator.Reset();
+                channelData.LastSaved          = currentTime;
+                channelData.Changed            = false;
+                channelData.HasUnsavedMessages = false;
+
+                CheckChannelOverflow(group, *channelInfo);
             } else {
-                if (channel.second.Changed) {
-                    next.Update(channel.second.LastSaved + group.ChangedInterval);
+                if (channelData.Changed) {
+                    next.Update(channelData.LastSaved + group.ChangedInterval);
                 }
             }
             if (::Debug.IsEnabled()) {
@@ -311,9 +386,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point cu
         }
 
         if (saved) {
-            if (!onlyChangedWereProcessed) {
-                group.LastUSaved = currentTime;
-            }
+            CheckGroupOverflow(group);
 #ifndef NBENCHMARK
             benchmark.Enable();
 #endif
@@ -336,16 +409,14 @@ class TJsonChannelsVisitor : public IChannelVisitor
 public:
     Json::Value Root;
 
-    void ProcessChannel(const TChannelName&                   channelName,
-                        uint32_t                              rowCount,
-                        std::chrono::system_clock::time_point lastRecordTime) override
+    void ProcessChannel(PChannelInfo channel) override
     {
         Json::Value values;
-        values["items"] = rowCount;
+        values["items"] = channel->GetRecordCount();
         values["last_ts"] =
-            Json::Value::Int64(duration_cast<seconds>(lastRecordTime.time_since_epoch()).count());
+            Json::Value::Int64(duration_cast<seconds>(channel->GetLastRecordTime().time_since_epoch()).count());
 
-        Root["channels"][channelName.Device + "/" + channelName.Control] = values;
+        Root["channels"][channel->GetName().Device + "/" + channel->GetName().Control] = values;
     }
 };
 
@@ -532,4 +603,59 @@ TBenchmark::~TBenchmark()
 void TBenchmark::Enable()
 {
     Enabled = true;
+}
+
+TChannelInfo::TChannelInfo(int64_t id, const std::string& device, const std::string& control)
+    : Id(id), RecordCount(0), Name(device, control)
+{}
+
+const TChannelName& TChannelInfo::GetName() const
+{
+    return Name;
+}
+
+int32_t TChannelInfo::GetRecordCount() const
+{
+    return RecordCount;
+}
+
+const std::chrono::system_clock::time_point& TChannelInfo::GetLastRecordTime() const
+{
+    return LastRecordTime;
+}
+
+int64_t TChannelInfo::GetId() const
+{
+    return Id;
+}
+
+PChannelInfo IStorage::CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control)
+{
+    PChannelInfo p(new TChannelInfo(id, device, control));
+    Channels.emplace(TChannelName(device, control), p);
+    return p;
+}
+
+void IStorage::SetRecordCount(TChannelInfo& channel, int recordCount)
+{
+    channel.RecordCount = (recordCount < 0) ? 0 : recordCount;
+}
+
+void IStorage::SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time)
+{
+    channel.LastRecordTime = time;
+}
+
+const std::unordered_map<TChannelName, PChannelInfo>& IStorage::GetChannelsPrivate() const
+{
+    return Channels;
+}
+
+PChannelInfo IStorage::FindChannel(const TChannelName& channelName) const
+{
+    auto it = Channels.find(channelName);
+    if (it != Channels.end()) {
+        return it->second;
+    }
+    return PChannelInfo();
 }

@@ -5,13 +5,12 @@ Priority: optional
 Standards-Version: 3.9.2
 Build-Depends: debhelper (>= 10), 
                pkg-config, 
-               libjsoncpp-dev, 
                libsqlite3-dev, 
-               libwbmqtt1-dev (>= 1.0.10),
-               libwbmqtt1-test-utils (>= 1.0.10)
+               libwbmqtt1-dev (>= 2.2.4),
+               libwbmqtt1-test-utils (>= 2.2.4)
 
 Package: wb-mqtt-db
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libjsoncpp0 | libjsoncpp1, libwbmqtt1 (>= 1.0.10), libsqlite3-0
+Depends: ${shlibs:Depends}, ${misc:Depends}, libwbmqtt1-2 (>= 2.2.4), libsqlite3-0
 Breaks: wb-mqtt-confed (<< 1.0.2)
 Description: Wiren Board database logger

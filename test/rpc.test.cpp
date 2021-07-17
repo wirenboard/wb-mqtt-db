@@ -11,15 +11,14 @@ namespace
     class TFakeStorage : public IStorage
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
-
+        int Id;
     public:
-        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture) {}
+        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture), Id(0) {}
 
-        void Load(TLoggerCache& cache) {}
-
-        void WriteChannel(const TChannelName& channelName, TChannel& channel, TLoggingGroup& group) {}
-
-        void Commit() {}
+        PChannelInfo CreateChannel(const TChannelName& channelName) override
+        {
+            return CreateChannelPrivate(++Id, channelName.Device, channelName.Control);
+        }
 
         void GetRecords(IRecordsVisitor&                      visitor,
                         const std::vector<TChannelName>&      channels,
@@ -68,26 +67,37 @@ namespace
         {
             tm dt;
             memset(&dt, 0, sizeof(tm));
+
+            auto p = CreateChannel({"wb-adc", "Vin"});
+            SetRecordCount(*p, 100);
             dt.tm_year = 100;
             dt.tm_mon  = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
-            visitor.ProcessChannel({"wb-adc", "Vin"},
-                                   100,
-                                   std::chrono::system_clock::from_time_t(timegm(&dt)));
+            SetLastRecordTime(*p, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            visitor.ProcessChannel(p);
 
+            p = CreateChannel({"wb-adc",  "A1"});
+            SetRecordCount(*p, 1000);
             dt.tm_year = 110;
             dt.tm_mon  = 4;
             dt.tm_mday = 2;
             dt.tm_hour = 11;
             dt.tm_min  = 21;
             dt.tm_sec  = 31;
-            visitor.ProcessChannel({"wb-adc", "A1"},
-                                   1000,
-                                   std::chrono::system_clock::from_time_t(timegm(&dt)));
+            SetLastRecordTime(*p, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            visitor.ProcessChannel(p);
         }
+
+        void WriteChannel(TChannelInfo&                         channelInfo, 
+                          const TChannel&                       channelData,
+                          std::chrono::system_clock::time_point time,
+                          const std::string&                    groupName) {}
+        void Commit() {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
+        void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
     };
 } // namespace
 

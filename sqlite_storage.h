@@ -9,21 +9,10 @@
  */
 class TSqliteStorage : public IStorage
 {
-    struct TChannelInfo
-    {
-        int                                   Id;
-        uint32_t                              RecordCount;
-        std::chrono::system_clock::time_point LastRecordTime;
-
-        TChannelInfo();
-    };
-
     std::unique_ptr<SQLite::Database>              DB;
-    std::unordered_map<TChannelName, TChannelInfo> StoredChannelIds;
     std::unique_ptr<SQLite::Transaction>           Transaction;
     std::unique_ptr<SQLite::Statement>             InsertRowQuery;
     std::unique_ptr<SQLite::Statement>             CleanChannelQuery;
-    std::unique_ptr<SQLite::Statement>             CleanGroupQuery;
     std::mutex                                     Mutex;
 
     void CreateTables(int dbVersion);
@@ -37,7 +26,7 @@ class TSqliteStorage : public IStorage
     int  ReadDBVersion();
     void UpdateDB(int prev_version);
 
-    TChannelInfo* GetOrCreateChannelId(const TChannelName& channelName);
+    void Load();
 
 public:
     /**
@@ -46,21 +35,16 @@ public:
      * @param dbFile full path and name of .db file
      */
     TSqliteStorage(const std::string& dbFile);
-    ~TSqliteStorage();
 
-    /**
-     * @brief Load information about stored channels
-     *
-     * @param cache the object to fill with data from DB
-     */
-    void Load(TLoggerCache& cache) override;
+    PChannelInfo CreateChannel(const TChannelName& channelName);
 
     /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
-    void WriteChannel(const TChannelName& channelName,
-                      TChannel&           channel,
-                      TLoggingGroup&      group) override;
+    void WriteChannel(TChannelInfo&                         channelName,
+                      const TChannel&                       channel,
+                      std::chrono::system_clock::time_point time,
+                      const std::string&                    groupName) override;
 
     /**
      * @brief Save all modifications in DB
@@ -91,4 +75,13 @@ public:
      * @brief Get channels from storage
      */
     void GetChannels(IChannelVisitor& visitor) override;
+
+    //! Delete count oldest records of channel
+    void DeleteRecords(TChannelInfo& channel, uint32_t count);
+
+    //! Delete count oldest records of channels
+    void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count);
+
+    //! Get current DB version
+    static int GetDBVersion();
 };

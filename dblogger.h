@@ -8,6 +8,8 @@
 #include <wblib/mqtt.h>
 #include <wblib/rpc.h>
 
+class IStorage;
+
 /**
  * @brief Device name and control name pair for identificaition of a control
  */
@@ -17,9 +19,6 @@ struct TChannelName
     std::string Control; //! Control name from MQTT /devices/+/controls/XXXX
 
     TChannelName() = default;
-
-    TChannelName(const std::string& mqttTopic);
-
     TChannelName(const std::string& device, const std::string& control);
 
     bool operator==(const TChannelName& rhs) const;
@@ -41,6 +40,31 @@ namespace std
 }; // namespace std
 
 std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
+
+/**
+ * @brief Device name and control name pair for identificaition of a control
+ */
+class TChannelInfo
+{
+    friend class IStorage; // Only IStorage can create and modify TChannelInfo
+
+    int64_t                               Id;
+    int                                   RecordCount;
+    std::chrono::system_clock::time_point LastRecordTime;
+    TChannelName                          Name;
+
+    TChannelInfo(int64_t id, const std::string& device, const std::string& control);
+
+    TChannelInfo(const TChannelInfo&) = delete;
+    TChannelInfo& operator=(const TChannelInfo&) = delete;
+public:
+    const TChannelName&                          GetName() const;
+    int                                          GetRecordCount() const;
+    const std::chrono::system_clock::time_point& GetLastRecordTime() const;
+    int64_t                                      GetId() const;
+};
+
+typedef std::shared_ptr<TChannelInfo> PChannelInfo;
 
 /**
  * @brief The class holds minimum, maximum and summary of a series of values
@@ -92,6 +116,8 @@ struct TChannel
 //! A group of channels with storage settings
 struct TLoggingGroup
 {
+    typedef std::unordered_map<TChannelName, std::pair<PChannelInfo, TChannel>> TChannelsMap;
+
     std::vector<std::string> MqttTopicPatterns;
 
     //! Maximum records in DB of a single channel in the group. Unlimited if 0
@@ -109,31 +135,29 @@ struct TLoggingGroup
     //! Group name
     std::string Name;
 
-    //! Unique id in storage
-    int StorageId;
-
-    std::unordered_map<TChannelName, TChannel> Channels;
+    TChannelsMap Channels;
 
     //! Unmodified values last saving time
     std::chrono::steady_clock::time_point LastUSaved;
 
-    //! Number of records of the group in DB
-    int RecordCount = 0;
-
     //! Check if mqttTopic matches any of MqttTopicPatterns
     bool MatchPatterns(const std::string& mqttTopic) const;
+
+    TChannel& GetChannelData(const TChannelName& channelName);
 };
+
+std::vector<PChannelInfo> GetChannelInfos(const TLoggingGroup& group);
+uint32_t GetRecordCount(const TLoggingGroup& group);
 
 struct TLoggerCache
 {
     std::vector<TLoggingGroup> Groups;
 };
 
-//!
 class IRecordsVisitor
 {
 public:
-    virtual ~IRecordsVisitor();
+    virtual ~IRecordsVisitor() = default;
 
     virtual bool ProcessRecord(int                                   recordId,
                                int                                   channelNameId,
@@ -155,11 +179,9 @@ public:
 class IChannelVisitor
 {
 public:
-    virtual ~IChannelVisitor();
+    virtual ~IChannelVisitor() = default;
 
-    virtual void ProcessChannel(const TChannelName&                   channelName,
-                                uint32_t                              rowCount,
-                                std::chrono::system_clock::time_point lastRecordTime) = 0;
+    virtual void ProcessChannel(PChannelInfo channel) = 0;
 };
 
 /**
@@ -168,21 +190,17 @@ public:
 class IStorage
 {
 public:
-    virtual ~IStorage();
+    virtual ~IStorage() = default;
 
-    /**
-     * @brief Load information about stored channels
-     *
-     * @param cache the object to fill with data from DB
-     */
-    virtual void Load(TLoggerCache& cache) = 0;
+    virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
 
     /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
-    virtual void WriteChannel(const TChannelName& channelName,
-                              TChannel&           channel,
-                              TLoggingGroup&      group) = 0;
+    virtual void WriteChannel(TChannelInfo&                         channelInfo,
+                              const TChannel&                       channel,
+                              std::chrono::system_clock::time_point time,
+                              const std::string&                    groupName) = 0;
 
     /**
      * @brief Save all modifications
@@ -213,6 +231,19 @@ public:
      * @brief Get channels from storage
      */
     virtual void GetChannels(IChannelVisitor& visitor) = 0;
+
+    virtual void DeleteRecords(TChannelInfo& channel, uint32_t count) = 0;
+    virtual void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) = 0;
+
+protected:
+    PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
+    void SetRecordCount(TChannelInfo& channel, int recordCount);
+    void SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time);
+    const std::unordered_map<TChannelName, PChannelInfo>& GetChannelsPrivate() const;
+    PChannelInfo FindChannel(const TChannelName& channelName) const;
+
+private:
+    std::unordered_map<TChannelName, PChannelInfo> Channels;
 };
 
 class TMQTTDBLogger
@@ -235,6 +266,9 @@ private:
         std::chrono::steady_clock::time_point currentTime);
 
     void ProcessMessages(std::queue<WBMQTT::TMqttMessage>& messages);
+
+    void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
+    void CheckGroupOverflow(const TLoggingGroup& group);
 
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);

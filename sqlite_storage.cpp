@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <wblib/utils.h>
 
+#include "db_migrations.h"
 #include "log.h"
 
 using namespace std;
@@ -15,11 +16,8 @@ using namespace std::chrono;
 
 namespace
 {
-    //! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR) entries
-    const float RECORDS_CLEAR_THRESHOLDR = 0.02;
-
     const char* DB_BACKUP_FILE_EXTENSION = ".backup";
-    const int   WB_DB_VERSION            = 4;
+    const int   WB_DB_VERSION            = 5;
 
     const int UNDEFINED_ID = -1;
 
@@ -36,92 +34,38 @@ namespace
         dst << src.rdbuf();
     }
 
-    void convertDBFrom3To4(SQLite::Database& DB)
+    template<typename Iterator, typename Predicate>
+    std::string Join(Iterator begin, Iterator end, Predicate pred, const std::string& delim)
     {
-        // save old channels table
-        DB.exec("ALTER TABLE channels RENAME TO channels_old");
-
-        // save new channels table
-        DB.exec("CREATE TABLE channels ( "
-                "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                "device VARCHAR(255), "
-                "control VARCHAR(255), "
-                "UNIQUE(device,control) "
-                ")");
-
-        // save unique channels to new channels table and update keys in data table
-        {
-            SQLite::Statement query(
-                DB,
-                "SELECT int_id, device, control FROM channels_old ORDER BY device, control");
-            int          prevId = -1;
-            TChannelName prevName;
-            while (query.executeStep()) {
-                TChannelName curName(query.getColumn(1), query.getColumn(2));
-                if (curName == prevName) {
-                    SQLite::Statement updateQuery(DB, "UPDATE data SET channel=? WHERE channel=?");
-                    updateQuery.bind(1, prevId);
-                    updateQuery.bind(2, query.getColumn(0).getInt());
-                    updateQuery.exec();
-                } else {
-                    prevName = curName;
-                    prevId   = query.getColumn(0).getInt();
-                    SQLite::Statement insertQuery(
-                        DB,
-                        "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
-                    insertQuery.bind(1, prevId);
-                    insertQuery.bind(2, curName.Device);
-                    insertQuery.bind(3, curName.Control);
-                    insertQuery.exec();
-                }
-            }
+        std::stringstream res;
+        if (begin != end) {
+            res << pred(*begin);
         }
-
-        // drop old channels table
-        DB.exec("DROP TABLE channels_old");
-
-        // save old data table
-        DB.exec("ALTER TABLE data RENAME TO data_old");
-
-        // create new data table
-        DB.exec("CREATE TABLE data ("
-                "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "channel INTEGER,"
-                "value VARCHAR(255),"
-                "timestamp INTEGER DEFAULT(0),"
-                "group_id INTEGER,"
-                "max VARCHAR(255),"
-                "min VARCHAR(255),"
-                "retained INTEGER"
-                ")");
-
-        // copy all data without device field
-        DB.exec("INSERT INTO data "
-                "SELECT uid, channel, value, timestamp, group_id, max, min, retained "
-                "FROM data_old");
-
-        // drop old data table
-        DB.exec("DROP TABLE data_old");
-
-        // drop old devices table
-        DB.exec("DROP TABLE devices");
-
-        DB.exec("UPDATE variables SET value=\"4\" WHERE name=\"db_version\"");
+        ++begin;
+        for (; begin != end; ++begin) {
+            res << delim << pred(*begin);
+        }
+        return res.str();
     }
-} // namespace
 
-TSqliteStorage::TChannelInfo::TChannelInfo(): Id(UNDEFINED_ID), RecordCount(0)
-{}
+} // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
 {
+    bool isMemoryDb = (dbFile.find(":memory:") != string::npos);
+
     // check if backup file is present; if so, we should try to repair DB
-    if (CheckBackupFile(dbFile)) {
+    if (!isMemoryDb && CheckBackupFile(dbFile)) {
         LOG(Warn) << "Something went wrong last time, restoring old backup file";
         RestoreBackupFile(dbFile);
     }
 
-    DB.reset(new SQLite::Database(dbFile, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
+    int flags = SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE;
+    if (isMemoryDb) {
+        flags |= SQLite::OPEN_URI;
+    }
+
+    DB.reset(new SQLite::Database(dbFile, flags));
 
     if (!DB->tableExists("data")) {
         // new DB file created
@@ -151,23 +95,20 @@ TSqliteStorage::TSqliteStorage(const string& dbFile)
 
     InsertRowQuery.reset(new SQLite::Statement(
         *DB,
-        "INSERT INTO data (channel, value, group_id, min, max, retained, timestamp) "
-        "VALUES (?, ?, ?, ?, ?, ?, strftime(\"%s\", 'now') * 1000)"));
+        "INSERT INTO data (channel, value, min, max, retained, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, ?)"));
 
     CleanChannelQuery.reset(
-        new SQLite::Statement(*DB, "DELETE FROM data WHERE channel = ? ORDER BY rowid ASC LIMIT ?"));
-
-    CleanGroupQuery.reset(
-        new SQLite::Statement(*DB, "DELETE FROM data WHERE group_id = ? ORDER BY rowid ASC LIMIT ?"));
+        new SQLite::Statement(*DB, "DELETE FROM data WHERE channel = ? ORDER BY timestamp ASC LIMIT ?"));
 
     LOG(Info) << "DB initialization is done";
 
-    if (CheckBackupFile(dbFile)) {
+    if (!isMemoryDb && CheckBackupFile(dbFile)) {
         RemoveBackupFile(dbFile);
     }
-}
 
-TSqliteStorage::~TSqliteStorage() {}
+    Load();
+}
 
 void TSqliteStorage::CreateTables(int dbVersion)
 {
@@ -179,19 +120,12 @@ void TSqliteStorage::CreateTables(int dbVersion)
              "UNIQUE(device,control) "
              ")  ");
 
-    LOG(Debug) << "Creating 'groups' table...";
-    DB->exec("CREATE TABLE IF NOT EXISTS groups ( "
-             "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-             "group_id VARCHAR(255) "
-             ")  ");
-
     LOG(Debug) << "Creating 'data' table...";
     DB->exec("CREATE TABLE IF NOT EXISTS data ("
              "uid INTEGER PRIMARY KEY AUTOINCREMENT, "
              "channel INTEGER,"
              "value VARCHAR(255),"
              "timestamp INTEGER DEFAULT(0),"
-             "group_id INTEGER,"
              "max VARCHAR(255),"
              "min VARCHAR(255),"
              "retained INTEGER"
@@ -222,59 +156,22 @@ void TSqliteStorage::CreateIndices()
     // leave it here as it is.
     LOG(Debug) << "Creating 'data_topic_timestamp' index on 'data' ('channel', 'timestamp')";
     DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, timestamp)");
-
-    LOG(Debug) << "Creating 'data_gid' index on 'data' ('group_id')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_gid ON data (group_id)");
-
-    LOG(Debug) << "Creating 'data_gid_timestamp' index on 'data' ('group_id', 'timestamp')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_gid_timestamp ON data (group_id, timestamp)");
 }
 
-void TSqliteStorage::Load(TLoggerCache& cache)
+void TSqliteStorage::Load()
 {
-    {
-        std::lock_guard<std::mutex> lg(Mutex);
-        SQLite::Statement query(*DB, "SELECT int_id, device, control FROM channels");
-        SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid), MAX(timestamp)/1000 FROM data WHERE channel=?");
+    std::lock_guard<std::mutex> lg(Mutex);
+    SQLite::Statement query(*DB, "SELECT int_id, device, control FROM channels");
+    SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid), MAX(timestamp)/1000 FROM data WHERE channel=?");
 
-        while (query.executeStep()) {
-            rowCountQuery.reset();
-            rowCountQuery.bind(1, query.getColumn(0).getInt64());
-            rowCountQuery.executeStep();
-            TChannelName name(query.getColumn(1), query.getColumn(2));
-            TChannelInfo info;
-            info.Id = query.getColumn(0);
-            info.RecordCount = rowCountQuery.getColumn(0);
-            if (!rowCountQuery.getColumn(1).isNull()) {
-                info.LastRecordTime = std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64());
-            }
-            StoredChannelIds[name] = info;
-        }
-    }
-
-    unordered_map<string, std::pair<int, int>> storedGroupIds;
-    {
-        SQLite::Statement query(*DB, "SELECT int_id, group_id FROM groups");
-        SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid) FROM data WHERE group_id=?");
-        while (query.executeStep()) {
-            rowCountQuery.reset();
-            rowCountQuery.bind(1, query.getColumn(0).getInt64());
-            rowCountQuery.executeStep();
-            storedGroupIds[query.getColumn(1).getText()] = {query.getColumn(0),
-                                                            rowCountQuery.getColumn(0)};
-        }
-    }
-
-    for (auto& group : cache.Groups) {
-        auto it = storedGroupIds.find(group.Name);
-        if (it != storedGroupIds.end()) {
-            group.StorageId   = it->second.first;
-            group.RecordCount = it->second.second;
-        } else {
-            SQLite::Statement query(*DB, "INSERT INTO groups (group_id) VALUES (?) ");
-            query.bindNoCopy(1, group.Name);
-            query.exec();
-            group.StorageId = DB->getLastInsertRowid();
+    while (query.executeStep()) {
+        rowCountQuery.reset();
+        rowCountQuery.bind(1, query.getColumn(0).getInt64());
+        rowCountQuery.executeStep();
+        auto channel = CreateChannelPrivate(query.getColumn(0).getInt64(), query.getColumn(1), query.getColumn(2));
+        SetRecordCount(*channel, rowCountQuery.getColumn(0));
+        if (!rowCountQuery.getColumn(1).isNull()) {
+            SetLastRecordTime(*channel, std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
         }
     }
 }
@@ -295,97 +192,20 @@ int TSqliteStorage::ReadDBVersion()
 
 void TSqliteStorage::UpdateDB(int prev_version)
 {
-    SQLite::Transaction transaction(*DB);
+    auto migrations = GetMigrations();
+    if (WB_DB_VERSION > migrations.size()) {
+        wb_throw(TBaseException, "No migration to new DB version");
+    }
 
-    switch (prev_version) {
-    case 0:
-        LOG(Info) << "Convert database from version 0";
-
-        DB->exec("ALTER TABLE data RENAME TO tmp");
-
-        // drop existing indexes
-        DB->exec("DROP INDEX data_topic");
-        DB->exec("DROP INDEX data_topic_timestamp");
-        DB->exec("DROP INDEX data_gid");
-        DB->exec("DROP INDEX data_gid_timestamp");
-
-        // create tables with most recent schema
-        CreateTables(WB_DB_VERSION);
-
-        // generate internal integer ids from old data table
-        DB->exec("INSERT OR IGNORE INTO devices (device) SELECT device FROM tmp GROUP BY device");
-        DB->exec("INSERT OR IGNORE INTO channels (device, control) SELECT device, control FROM tmp "
-                 "GROUP BY device, control");
-        DB->exec(
-            "INSERT OR IGNORE INTO groups (group_id) SELECT group_id FROM tmp GROUP BY group_id");
-
-        // populate data table using values from old data table
-        DB->exec(
-            "INSERT INTO data(uid, device, channel,value,timestamp,group_id) "
-            "SELECT uid, devices.int_id, channels.int_id, value, julianday(timestamp), groups.int_id "
-            "FROM tmp "
-            "LEFT JOIN devices ON tmp.device = devices.device "
-            "LEFT JOIN channels ON tmp.device = channels.device AND tmp.control = channels.control "
-            "LEFT JOIN groups ON tmp.group_id = groups.group_id ");
-
-        DB->exec("DROP TABLE tmp");
-
-        DB->exec("UPDATE variables SET value=\"1\" WHERE name=\"db_version\"");
-
-    case 1:
-        // In versions >= 2, there is a difference in 'data' table:
-        // add data.max, data.min columns
-        LOG(Info) << "Convert database from version 1";
-
-        DB->exec("ALTER TABLE data ADD COLUMN max VARCHAR(255)");
-        DB->exec("ALTER TABLE data ADD COLUMN min VARCHAR(255)");
-        DB->exec("ALTER TABLE data ADD COLUMN retained INTEGER");
-
-        DB->exec("UPDATE data SET max = value");
-        DB->exec("UPDATE data SET min = value");
-        DB->exec("UPDATE data SET retained = 0");
-
-        DB->exec("UPDATE variables SET value=\"2\" WHERE name=\"db_version\"");
-
-    case 2:
-        LOG(Info) << "Convert database from version 2";
-
-        // save old data table
-        DB->exec("ALTER TABLE data RENAME TO data_old");
-
-        // create new data table
-        DB->exec("CREATE TABLE data ("
-                 "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
-                 "device INTEGER,"
-                 "channel INTEGER,"
-                 "value VARCHAR(255),"
-                 "timestamp INTEGER DEFAULT(0),"
-                 "group_id INTEGER,"
-                 "max VARCHAR(255),"
-                 "min VARCHAR(255),"
-                 "retained INTEGER"
-                 ")");
-
-        // copy all data casting timestamps
-        DB->exec("INSERT INTO data "
-                 "SELECT uid, device, channel, value, "
-                 "CAST((timestamp - 2440587.5) * 86400000 AS INTEGER), group_id, max, min, retained "
-                 "FROM data_old");
-
-        // drop old data table
-        DB->exec("DROP TABLE data_old");
-
-        DB->exec("UPDATE variables SET value=\"3\" WHERE name=\"db_version\"");
-
-    case 3:
-        LOG(Info) << "Convert database from version 3";
-        convertDBFrom3To4(*DB);
-        break;
-
-    default:
+    if (prev_version > WB_DB_VERSION) {
         wb_throw(TBaseException, "Unsupported DB version. Please consider deleting DB file.");
     }
 
+    SQLite::Transaction transaction(*DB);
+    for (; static_cast<unsigned int>(prev_version) < migrations.size(); ++prev_version) {
+        LOG(Info) << "Convert database from version " << prev_version;
+        migrations[prev_version](*DB);
+    }
     transaction.commit();
     DB->exec("VACUUM");
 }
@@ -432,72 +252,37 @@ void TSqliteStorage::RemoveBackupFile(const string& dbFile)
     std::remove(BackupFileName(dbFile).c_str());
 }
 
-void TSqliteStorage::WriteChannel(const TChannelName& channelName,
-                                  TChannel&           channel,
-                                  TLoggingGroup&      group)
+void TSqliteStorage::WriteChannel(TChannelInfo&                         channelInfo, 
+                                  const TChannel&                       channel,
+                                  std::chrono::system_clock::time_point time,
+                                  const std::string& /*groupName*/)
 {
     std::lock_guard<std::mutex> lg(Mutex);
     if (!Transaction) {
         Transaction.reset(new SQLite::Transaction(*DB));
     }
 
-    TChannelInfo* channelInfo = GetOrCreateChannelId(channelName);
+    LOG(Debug) << "Resulting channel ID for this request is " << channelInfo.GetId();
 
-    LOG(Debug) << "Resulting channel ID for this request is " << channelInfo->Id;
-
-    InsertRowQuery->bind(1, channelInfo->Id);
-    InsertRowQuery->bind(3, group.StorageId);
+    InsertRowQuery->bind(1, channelInfo.GetId());
 
     if (channel.Accumulator.HasValues()) {
         InsertRowQuery->bind(2, channel.Accumulator.Average());
-        InsertRowQuery->bind(4, channel.Accumulator.Min);
-        InsertRowQuery->bind(5, channel.Accumulator.Max);
+        InsertRowQuery->bind(3, channel.Accumulator.Min);
+        InsertRowQuery->bind(4, channel.Accumulator.Max);
     } else {
         InsertRowQuery->bindNoCopy(2, channel.LastValue); // avg == value
+        InsertRowQuery->bind(3);                          // bind NULL values
         InsertRowQuery->bind(4);                          // bind NULL values
-        InsertRowQuery->bind(5);                          // bind NULL values
     }
 
-    InsertRowQuery->bind(6, channel.Retained ? 1 : 0);
+    InsertRowQuery->bind(5, channel.Retained ? 1 : 0);
+    InsertRowQuery->bind(6, std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch()).count());
     InsertRowQuery->exec();
     InsertRowQuery->reset();
 
-    ++channelInfo->RecordCount;
-
-    // local cache is needed here since SELECT COUNT are extremely slow in sqlite
-    // so we only ask DB at startup. This applies to two if blocks below.
-    if (group.MaxChannelRecords > 0) {
-        if (channelInfo->RecordCount > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            CleanChannelQuery->bind(1, channelInfo->Id);
-            CleanChannelQuery->bind(2, channelInfo->RecordCount - group.MaxChannelRecords);
-            CleanChannelQuery->exec();
-            CleanChannelQuery->reset();
-
-            LOG(Warn) << "Channel data limit is reached: channel " << channelName << ", row count "
-                      << channelInfo->RecordCount << ", limit " << group.MaxChannelRecords;
-
-            LOG(Debug) << "Clear channel id = " << channelInfo->Id;
-
-            channelInfo->RecordCount = group.MaxChannelRecords;
-        }
-    }
-
-    ++group.RecordCount;
-    if (group.MaxRecords > 0) {
-        if (group.RecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            CleanGroupQuery->bind(1, group.StorageId);
-            CleanGroupQuery->bind(2, group.RecordCount - group.MaxRecords);
-            CleanGroupQuery->exec();
-            CleanGroupQuery->reset();
-
-            LOG(Warn) << "Group data limit is reached: group " << group.Name << ", row count "
-                      << group.RecordCount << ", limit " << group.MaxRecords;
-
-            LOG(Debug) << "Clear group id = " << group.StorageId;
-
-            group.RecordCount = group.MaxRecords;
-        }
-    }
+    SetRecordCount(channelInfo, channelInfo.GetRecordCount() + 1);
+    SetLastRecordTime(channelInfo, time);
 }
 
 void TSqliteStorage::Commit()
@@ -509,22 +294,16 @@ void TSqliteStorage::Commit()
     }
 }
 
-TSqliteStorage::TChannelInfo* TSqliteStorage::GetOrCreateChannelId(const TChannelName& channelName)
+PChannelInfo TSqliteStorage::CreateChannel(const TChannelName& channelName)
 {
-    TSqliteStorage::TChannelInfo* channelInfo = &StoredChannelIds[channelName];
-    if (channelInfo->Id != UNDEFINED_ID)
-        return channelInfo;
-
-    LOG(Info) << "Creating channel " << channelName;
+    LOG(Info) << "Creating channel " << channelName.Device << "/" << channelName.Control;
 
     SQLite::Statement query(*DB, "INSERT INTO channels (device, control) VALUES (?, ?) ");
-
     query.bindNoCopy(1, channelName.Device);
     query.bindNoCopy(2, channelName.Control);
     query.exec();
 
-    channelInfo->Id = DB->getLastInsertRowid();
-    return channelInfo;
+    return CreateChannelPrivate(DB->getLastInsertRowid(), channelName.Device, channelName.Control);
 }
 
 void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
@@ -547,12 +326,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
     if (!channels.empty()) {
         queryStr += "channel IN ( ";
-        for (size_t i = 0; i < channels.size(); ++i) {
-            if (i > 0) {
-                queryStr += ", ";
-            }
-            queryStr += "?";
-        }
+        queryStr += Join(channels.begin(), channels.end(), [] (const auto&) {return '?';}, ",");
         queryStr += ") AND ";
     }
 
@@ -568,18 +342,18 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     SQLite::Statement query(*DB, queryStr);
 
     int param_num = 0;
-    for (const auto& channel : channels) {
+    for (const auto& channel: channels) {
         int  channelId = -1;
-        auto it        = StoredChannelIds.find(channel);
-        if (it != StoredChannelIds.end()) {
-            channelId = it->second.Id;
+        auto pChannel  = FindChannel(channel);
+        if (pChannel) {
+            channelId = pChannel->GetId();
         }
         query.bind(++param_num, channelId);
     }
 
-    std::unordered_map<int, TChannelName> channelIdToNameMap;
-    for(const auto& ch: StoredChannelIds) {
-        channelIdToNameMap.insert({ch.second.Id, ch.first});
+    std::unordered_map<int, PChannelInfo> channelIdToNameMap;
+    for(const auto& ch: GetChannelsPrivate()) {
+        channelIdToNameMap.insert({ch.second->GetId(), ch.second});
     }
 
     query.bind(++param_num, duration_cast<milliseconds>(startTime.time_since_epoch()).count());
@@ -605,7 +379,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         if (!query.getColumn(5).isNull()) {
             if (!visitor.ProcessRecord(recordId,
                                        channelId,
-                                       channelIdToNameMap[channelId],
+                                       channelIdToNameMap[channelId]->GetName(),
                                        query.getColumn(2).getDouble(),
                                        timestamp,
                                        query.getColumn(4).getDouble(),
@@ -616,7 +390,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         } else {
             if (!visitor.ProcessRecord(recordId,
                                        channelId,
-                                       channelIdToNameMap[channelId],
+                                       channelIdToNameMap[channelId]->GetName(),
                                        query.getColumn(2).getString(),
                                        timestamp,
                                        retain))
@@ -628,9 +402,52 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 void TSqliteStorage::GetChannels(IChannelVisitor& visitor)
 {
     std::lock_guard<std::mutex> lg(Mutex);
-    for (auto& channel : StoredChannelIds) {
-        visitor.ProcessChannel(channel.first,
-                               channel.second.RecordCount,
-                               channel.second.LastRecordTime);
+    for (const auto& channel : GetChannelsPrivate()) {
+        visitor.ProcessChannel(channel.second);
     }
+}
+
+void TSqliteStorage::DeleteRecords(TChannelInfo& channel, uint32_t count)
+{
+    std::lock_guard<std::mutex> lg(Mutex);
+    CleanChannelQuery->bind(1, channel.GetId());
+    CleanChannelQuery->bind(2, count);
+    auto deletedRows = CleanChannelQuery->exec();
+    CleanChannelQuery->reset();
+    SetRecordCount(channel, channel.GetRecordCount() - deletedRows);
+    LOG(Debug) << "Clear channel id = " << channel.GetId();
+}
+
+void TSqliteStorage::DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count)
+{
+    auto ids = Join(channels.begin(), channels.end(), [](const PChannelInfo& ch) { return ch->GetId();}, ",");
+    std::unordered_map<uint64_t, int> deletedRows;
+    {
+        std::stringstream queryText;
+        queryText << "SELECT count(), channel FROM "
+                  << "(SELECT channel FROM data WHERE channel in (" << ids << ") ORDER BY timestamp ASC LIMIT " << count << ") "
+                  << "GROUP BY channel";
+        SQLite::Statement query(*DB, queryText.str());
+        while(query.executeStep()) {
+            deletedRows[query.getColumn(1).getInt64()] = query.getColumn(0).getInt();
+        }
+    }
+    {
+        std::stringstream queryText;
+        queryText << "DELETE FROM data WHERE channel in (" << ids << ") ORDER BY timestamp ASC LIMIT " << count;
+        SQLite::Statement query(*DB, queryText.str());
+        query.exec();
+    }
+
+    for (auto& channel: channels) {
+        auto it = deletedRows.find(channel->GetId());
+        if (it != deletedRows.end()) {
+            SetRecordCount(*channel, channel->GetRecordCount() - it->second);
+        }
+    }
+}
+
+int TSqliteStorage::GetDBVersion()
+{
+    return WB_DB_VERSION;
 }
