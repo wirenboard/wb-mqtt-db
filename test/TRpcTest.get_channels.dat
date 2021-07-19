@@ -1,3 +1,6 @@
+Subscribe: /devices/+/meta/driver (QoS 0)
+Subscribe: /devices/+/meta/+ (QoS 0)
+Subscribe: /devices/+/controls/+/meta/+ (QoS 0)
 Subscribe: /devices/+/controls/+ (QoS 0)
 Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
 Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
@@ -5,4 +8,7 @@ Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
 Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
 Publish: /rpc/v1/db_logger/history/get_channels/test: '{"id":1}' (QoS 0, retained)
 Publish: /rpc/v1/db_logger/history/get_channels/test/reply: '{"error":null,"id":1,"result":{"channels":{"wb-adc/A1":{"items":1000,"last_ts":1272799291},"wb-adc/Vin":{"items":100,"last_ts":954584430}}}}' (QoS 2)
+Unsubscribe -- dblogger_test: /devices/+/controls/+
+Unsubscribe -- dblogger_test: /devices/+/controls/+/meta/+
+Unsubscribe -- dblogger_test: /devices/+/meta/+
 stop: dblogger_test

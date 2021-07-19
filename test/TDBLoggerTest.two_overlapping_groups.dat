@@ -1,3 +1,8 @@
+Subscribe: /devices/+/meta/driver (QoS 0)
+Subscribe: /devices/wb-adc/meta/Vin (QoS 0)
+Subscribe: /devices/wb-adc/meta/+ (QoS 0)
+Subscribe: /devices/wb-adc/controls/Vin/meta/+ (QoS 0)
+Subscribe: /devices/wb-adc/controls/+/meta/+ (QoS 0)
 Subscribe: /devices/wb-adc/controls/Vin (QoS 0)
 Subscribe: /devices/wb-adc/controls/+ (QoS 0)
 Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
@@ -54,4 +59,10 @@ Write "most specific" wb-adc/Vin
   Changed: 0
   Accumulator value count: 1
 Commit
+Unsubscribe -- dblogger_test: /devices/wb-adc/controls/+
+Unsubscribe -- dblogger_test: /devices/wb-adc/controls/+/meta/+
+Unsubscribe -- dblogger_test: /devices/wb-adc/controls/Vin
+Unsubscribe -- dblogger_test: /devices/wb-adc/controls/Vin/meta/+
+Unsubscribe -- dblogger_test: /devices/wb-adc/meta/+
+Unsubscribe -- dblogger_test: /devices/wb-adc/meta/Vin
 stop: dblogger_test

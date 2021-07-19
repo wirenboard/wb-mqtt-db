@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <time.h>
+#include <wblib/wbmqtt.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
 
@@ -112,7 +113,6 @@ protected:
 
     void SetUp()
     {
-        SetMode(E_Unordered);
         Broker = WBMQTT::Testing::NewFakeMqttBroker(*this);
         Client = Broker->MakeClient("dblogger_test");
 
@@ -132,8 +132,10 @@ protected:
 TEST_F(TRpcTest, get_channels)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
@@ -150,8 +152,10 @@ TEST_F(TRpcTest, get_channels)
 TEST_F(TRpcTest, get_records_v0)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
@@ -175,8 +179,10 @@ TEST_F(TRpcTest, get_records_v0)
 TEST_F(TRpcTest, get_records_v1)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),

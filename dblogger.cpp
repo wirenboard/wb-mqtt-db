@@ -2,9 +2,8 @@
 
 #include "log.h"
 
-#include <wblib/exceptions.h>
 #include <wblib/json_utils.h>
-#include <wblib/mqtt.h>
+#include <wblib/wbmqtt.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -27,13 +26,48 @@ namespace
         void ProcessChannel(PChannelInfo channel) override
         {
             for (auto& group: Cache.Groups) {
-                std::string topic("/devices/" + channel->GetName().Device + "/controls/" + channel->GetName().Control);
-                if (group.MatchPatterns(topic)) {
+                if (group.MatchPatterns(channel->GetName().Device, channel->GetName().Control)) {
                     group.Channels[channel->GetName()].first = channel;
                 }
             }
         }
     };
+
+    bool MatchPattern(const std::string& devicePattern,
+                      const std::string& controlPattern, 
+                      const std::string& device,
+                      const std::string& control)
+    {
+        if (devicePattern == device || devicePattern == "+") {
+            return (controlPattern == control || controlPattern == "+");
+        }
+        return false;
+    }
+
+    bool MatchPattern(const TChannelName& pattern, const std::string& device, const std::string& control)
+    {
+        return MatchPattern(pattern.Device, pattern.Control, device, control);
+    }
+
+    bool MatchPattern(const WBMQTT::TDeviceControlPair& pattern, const std::string& device, const std::string& control)
+    {
+        return MatchPattern(pattern.DeviceId, pattern.ControlId, device, control);
+    }
+
+    bool IsBool(const std::string& type)
+    {
+        return type == "switch" || type == "alarm" || type == "pushbutton";
+    }
+
+    bool IsText(const std::string& type)
+    {
+        return type == "text" || type == "rgb";
+    }
+
+    bool IsNumber(const std::string& type)
+    {
+        return !IsBool(type) && !IsText(type);
+    }
 }
 
 namespace WBMQTT
@@ -67,6 +101,38 @@ namespace WBMQTT
         }
     } // namespace JSON
 } // namespace WBMQTT
+
+void TControlFilter::addControlPatterns(const std::vector<TChannelName>& patterns)
+{
+    for (const auto& pattern: patterns) {
+        Controls.emplace_back(pattern.Device, pattern.Control);
+    }
+}
+
+std::vector<TDeviceControlPair> TControlFilter::Topics() const
+{
+    return Controls;
+}
+
+bool TControlFilter::MatchTopic(const std::string& topic) const
+{
+    // /devices/DEVICE/controls/CONTROL
+    auto components = StringSplit(topic, MQTT_PATH_DELIMITER);
+
+    if (components.size() < 5       ||
+        components[0] != ""         ||
+        components[1] != "devices"  ||
+        components[3] != "controls")
+    {
+        return false;
+    }
+    for (const auto& control: Controls) {
+        if (MatchPattern(control, components[2], components[4])) {
+            return true;
+        }
+    }
+    return false;
+}
 
 TChannelName::TChannelName(const std::string& device, const std::string& control)
     : Device(device), Control(control)
@@ -120,10 +186,10 @@ double TAccumulator::Average() const
     return (ValueCount > 0 ? Sum / double(ValueCount) : 0.0); // 0.0 - error value
 }
 
-bool TLoggingGroup::MatchPatterns(const std::string& mqttTopic) const
+bool TLoggingGroup::MatchPatterns(const std::string& device, const std::string& control) const
 {
-    for (auto& pattern : MqttTopicPatterns) {
-        if (WBMQTT::TopicMatchesSub(pattern, mqttTopic)) {
+    for (const auto& pattern : ControlPatterns) {
+        if (MatchPattern(pattern, device, control)) {
             return true;
         }
     }
@@ -153,30 +219,23 @@ uint32_t GetRecordCount(const TLoggingGroup& group)
     return sum;
 }
 
-TMQTTDBLogger::TMQTTDBLogger(PMqttClient               mqttClient,
+TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver             driver,
                              const TLoggerCache&       cache,
                              std::unique_ptr<IStorage> storage,
                              PMqttRpcServer            rpcServer,
                              std::chrono::seconds      getValuesRpcRequestTimeout)
-    : Cache(cache), MqttClient(mqttClient), Storage(std::move(storage)), RpcServer(rpcServer),
-      Active(false), GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
+    : Cache(cache), 
+      Driver(driver),
+      Storage(std::move(storage)),
+      RpcServer(rpcServer),
+      Active(false),
+      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
 {
-    std::vector<std::string> patterns;
 
-    for (auto& group : Cache.Groups) {
-        for (const auto& pattern : group.MqttTopicPatterns) {
-            patterns.push_back(pattern);
-        }
+    Filter = std::make_shared<TControlFilter>();
+    for (const auto& group: cache.Groups) {
+        Filter->addControlPatterns(group.ControlPatterns);
     }
-    MqttClient->Subscribe(
-        [&](const TMqttMessage& message) {
-            {
-                std::lock_guard<std::mutex> lg(Mutex);
-                MessagesQueue.push(message);
-            }
-            WakeupCondition.notify_all();
-        },
-        patterns);
 }
 
 TMQTTDBLogger::~TMQTTDBLogger()
@@ -204,22 +263,36 @@ void TMQTTDBLogger::Start()
 
     auto nextSaveTime = steady_clock::now();
 
+    Driver->On<TControlValueEvent>([&](const TControlValueEvent& event) {
+            {
+                std::lock_guard<std::mutex> lg(Mutex);
+                MessagesQueue.push({event.Control->GetDevice()->GetId(),
+                                    event.Control->GetId(),
+                                    event.RawValue,
+                                    event.Control->GetType()});
+            }
+            WakeupCondition.notify_all();
+        });
+    Driver->StartLoop();
+    Driver->WaitForReady();
+    Driver->SetFilter(Filter);
+    Driver->WaitForReady();
+
     RpcServer->RegisterMethod("history",
                               "get_values",
                               bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
     RpcServer->RegisterMethod("history",
                               "get_channels",
                               bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
-
-    MqttClient->Start();
     RpcServer->Start();
+
     for (auto& group : Cache.Groups) {
         group.LastUSaved = nextSaveTime;
     }
 
     while (Active) {
         steady_clock::time_point currentTime;
-        queue<TMqttMessage>      localQueue;
+        queue<TValueFromMqtt>    localQueue;
         {
             std::unique_lock<std::mutex> lk(Mutex);
             if (MessagesQueue.empty()) {
@@ -247,34 +320,34 @@ void TMQTTDBLogger::Stop()
     }
     WakeupCondition.notify_all();
     RpcServer->Stop();
-    MqttClient->Stop();
+    Driver->StopLoop();
 }
 
-void TMQTTDBLogger::ProcessMessages(queue<WBMQTT::TMqttMessage>& messages)
+void TMQTTDBLogger::ProcessMessages(queue<TValueFromMqtt>& messages)
 {
     while (!messages.empty()) {
         auto msg = messages.front();
-        if (!msg.Payload.empty()) {
+        if (!msg.Value.empty()) {
             for (auto& group : Cache.Groups) {
-                if (group.MatchPatterns(msg.Topic)) {
-                    auto items = WBMQTT::StringSplit(msg.Topic, "/");
-                    if (items.size() > 4) {
-                        auto& channelData = group.GetChannelData(TChannelName(items[2], items[4]));
+                if (group.MatchPatterns(msg.Device, msg.Control)) {
+                    auto& channelData = group.GetChannelData(TChannelName(msg.Device, msg.Control));
 
-                        const char* status = "is same";
-                        if (msg.Payload != channelData.LastValue) {
-                            status              = "IS CHANGED";
-                            channelData.Changed = true;
-                        }
-                        LOG(Debug) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
-                                << "\" " << status;
-
-                        channelData.Accumulator.Update(msg.Payload);
-
-                        channelData.LastValue          = msg.Payload;
-                        channelData.Retained           = msg.Retained;
-                        channelData.HasUnsavedMessages = true;
+                    const char* status = "is same";
+                    if (msg.Value != channelData.LastValue) {
+                        status              = "IS CHANGED";
+                        channelData.Changed = true;
                     }
+                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Device << "/" << msg.Control << ": \"" << msg.Value
+                              << "\" " << status;
+
+                    if (IsNumber(msg.Type)) {
+                        channelData.Accumulator.Update(msg.Value);
+                    }
+
+                    channelData.LastValue          = msg.Value;
+                    //TODO: remove!!!!
+                    channelData.Retained           = false;
+                    channelData.HasUnsavedMessages = true;
                     break;
                 }
             }

@@ -46,24 +46,28 @@ TEST_F(TConfigTest, good_config)
     ASSERT_EQ(c.Cache.Groups[0].ChangedInterval, std::chrono::seconds(220));
     ASSERT_EQ(c.Cache.Groups[0].MaxChannelRecords, 2000);
     ASSERT_EQ(c.Cache.Groups[0].MaxRecords, 200000);
-    ASSERT_EQ(c.Cache.Groups[0].MqttTopicPatterns.size(), 1);
-    ASSERT_EQ(c.Cache.Groups[0].MqttTopicPatterns[0], "/devices/+/controls/+");
+    ASSERT_EQ(c.Cache.Groups[0].ControlPatterns.size(), 1);
+    ASSERT_EQ(c.Cache.Groups[0].ControlPatterns[0].Device, "+");
+    ASSERT_EQ(c.Cache.Groups[0].ControlPatterns[0].Control, "+");
     ASSERT_EQ(c.Cache.Groups[0].UnchangedInterval, std::chrono::seconds(2200));
 
     ASSERT_EQ(c.Cache.Groups[1].Name, "more specific");
     ASSERT_EQ(c.Cache.Groups[1].ChangedInterval, std::chrono::seconds(320));
     ASSERT_EQ(c.Cache.Groups[1].MaxChannelRecords, 3000);
     ASSERT_EQ(c.Cache.Groups[1].MaxRecords, 300000);
-    ASSERT_EQ(c.Cache.Groups[1].MqttTopicPatterns.size(), 2);
-    ASSERT_EQ(c.Cache.Groups[1].MqttTopicPatterns[0], "/devices/wb-adc/controls/+");
-    ASSERT_EQ(c.Cache.Groups[1].MqttTopicPatterns[1], "/devices/wb-gpio/controls/+");
+    ASSERT_EQ(c.Cache.Groups[1].ControlPatterns.size(), 2);
+    ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[0].Device, "wb-adc");
+    ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[0].Control, "+");
+    ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[1].Device, "wb-gpio");
+    ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[1].Control, "+");
     ASSERT_EQ(c.Cache.Groups[1].UnchangedInterval, std::chrono::seconds(3200));
 
     ASSERT_EQ(c.Cache.Groups[2].Name, "most specific");
     ASSERT_EQ(c.Cache.Groups[2].ChangedInterval, std::chrono::seconds(420));
     ASSERT_EQ(c.Cache.Groups[2].MaxChannelRecords, 4000);
     ASSERT_EQ(c.Cache.Groups[2].MaxRecords, 400000);
-    ASSERT_EQ(c.Cache.Groups[2].MqttTopicPatterns.size(), 1);
-    ASSERT_EQ(c.Cache.Groups[2].MqttTopicPatterns[0], "/devices/wb-adc/controls/A1");
+    ASSERT_EQ(c.Cache.Groups[2].ControlPatterns.size(), 1);
+    ASSERT_EQ(c.Cache.Groups[2].ControlPatterns[0].Device, "wb-adc");
+    ASSERT_EQ(c.Cache.Groups[2].ControlPatterns[0].Control, "A1");
     ASSERT_EQ(c.Cache.Groups[2].UnchangedInterval, std::chrono::seconds(4200));
 }

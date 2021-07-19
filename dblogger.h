@@ -4,9 +4,12 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <mutex>
+#include <condition_variable>
 
 #include <wblib/mqtt.h>
 #include <wblib/rpc.h>
+#include <wblib/filters.h>
 
 class IStorage;
 
@@ -118,7 +121,7 @@ struct TLoggingGroup
 {
     typedef std::unordered_map<TChannelName, std::pair<PChannelInfo, TChannel>> TChannelsMap;
 
-    std::vector<std::string> MqttTopicPatterns;
+    std::vector<TChannelName> ControlPatterns;
 
     //! Maximum records in DB of a single channel in the group. Unlimited if 0
     int MaxChannelRecords = 0;
@@ -140,8 +143,8 @@ struct TLoggingGroup
     //! Unmodified values last saving time
     std::chrono::steady_clock::time_point LastUSaved;
 
-    //! Check if mqttTopic matches any of MqttTopicPatterns
-    bool MatchPatterns(const std::string& mqttTopic) const;
+    //! Check if device/control matches any of MqttTopicPatterns
+    bool MatchPatterns(const std::string& device, const std::string& control) const;
 
     TChannel& GetChannelData(const TChannelName& channelName);
 };
@@ -246,10 +249,29 @@ private:
     std::unordered_map<TChannelName, PChannelInfo> Channels;
 };
 
+class TControlFilter: public WBMQTT::TDeviceFilter
+{
+    std::vector<WBMQTT::TDeviceControlPair> Controls;
+public:
+    void addControlPatterns(const std::vector<TChannelName>& patterns);
+
+    std::vector<WBMQTT::TDeviceControlPair> Topics() const override;
+
+    bool MatchTopic(const std::string& topic) const override;
+};
+
+struct TValueFromMqtt
+{
+    std::string Device;
+    std::string Control;
+    std::string Value;
+    std::string Type;
+};
+
 class TMQTTDBLogger
 {
 public:
-    TMQTTDBLogger(WBMQTT::PMqttClient       mqttClient,
+    TMQTTDBLogger(WBMQTT::PDeviceDriver     driver,
                   const TLoggerCache&       cache,
                   std::unique_ptr<IStorage> storage,
                   WBMQTT::PMqttRpcServer    rpcServer,
@@ -265,7 +287,7 @@ private:
     std::chrono::steady_clock::time_point ProcessTimer(
         std::chrono::steady_clock::time_point currentTime);
 
-    void ProcessMessages(std::queue<WBMQTT::TMqttMessage>& messages);
+    void ProcessMessages(std::queue<TValueFromMqtt>& messages);
 
     void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
     void CheckGroupOverflow(const TLoggingGroup& group);
@@ -273,15 +295,16 @@ private:
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    TLoggerCache                     Cache;
-    WBMQTT::PMqttClient              MqttClient;
-    std::unique_ptr<IStorage>        Storage;
-    WBMQTT::PMqttRpcServer           RpcServer;
-    std::mutex                       Mutex;
-    std::condition_variable          WakeupCondition;
-    bool                             Active;
-    std::queue<WBMQTT::TMqttMessage> MessagesQueue;
-    std::chrono::seconds             GetValuesRpcRequestTimeout;
+    TLoggerCache                    Cache;
+    WBMQTT::PDeviceDriver           Driver;
+    std::unique_ptr<IStorage>       Storage;
+    WBMQTT::PMqttRpcServer          RpcServer;
+    std::mutex                      Mutex;
+    std::condition_variable         WakeupCondition;
+    bool                            Active;
+    std::queue<TValueFromMqtt>      MessagesQueue;
+    std::chrono::seconds            GetValuesRpcRequestTimeout;
+    std::shared_ptr<TControlFilter> Filter;
 };
 
 //! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of

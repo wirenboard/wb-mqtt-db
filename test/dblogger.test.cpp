@@ -2,6 +2,7 @@
 #include "sqlite_storage.h"
 #include <gtest/gtest.h>
 #include <stdio.h>
+#include <wblib/wbmqtt.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
 
@@ -102,8 +103,10 @@ protected:
 TEST_F(TDBLoggerTest, two_groups)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db2.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
@@ -131,8 +134,10 @@ TEST_F(TDBLoggerTest, two_groups)
 TEST_F(TDBLoggerTest, two_overlapping_groups)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db3.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
