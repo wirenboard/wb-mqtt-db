@@ -41,10 +41,12 @@ public:
     /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
-    void WriteChannel(TChannelInfo&                         channelName,
-                      const TChannel&                       channel,
-                      std::chrono::system_clock::time_point time,
-                      const std::string&                    groupName) override;
+    void WriteChannel(TChannelInfo&                         channelInfo,
+                      const std::string&                    value,
+                      const std::string&                    minimum,
+                      const std::string&                    maximum,
+                      bool                                  retained,
+                      std::chrono::system_clock::time_point time) override;
 
     /**
      * @brief Save all modifications in DB

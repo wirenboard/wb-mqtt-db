@@ -174,6 +174,7 @@ int main(int argc, char* argv[])
                               config.Cache,
                               std::make_unique<TSqliteStorage>(config.DBFile),
                               rpcServer,
+                              std::make_unique<TChannelWriter>(),
                               config.GetValuesRpcRequestTimeout));
 
         WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [=] { logger->Stop(); });

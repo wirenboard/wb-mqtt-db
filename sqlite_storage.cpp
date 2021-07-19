@@ -47,7 +47,6 @@ namespace
         }
         return res.str();
     }
-
 } // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
@@ -252,10 +251,12 @@ void TSqliteStorage::RemoveBackupFile(const string& dbFile)
     std::remove(BackupFileName(dbFile).c_str());
 }
 
-void TSqliteStorage::WriteChannel(TChannelInfo&                         channelInfo, 
-                                  const TChannel&                       channel,
-                                  std::chrono::system_clock::time_point time,
-                                  const std::string& /*groupName*/)
+void TSqliteStorage::WriteChannel(TChannelInfo&                         channelInfo,
+                                  const std::string&                    value,
+                                  const std::string&                    minimum,
+                                  const std::string&                    maximum,
+                                  bool                                  retained,
+                                  std::chrono::system_clock::time_point time)
 {
     std::lock_guard<std::mutex> lg(Mutex);
     if (!Transaction) {
@@ -264,19 +265,16 @@ void TSqliteStorage::WriteChannel(TChannelInfo&                         channelI
 
     LOG(Debug) << "Resulting channel ID for this request is " << channelInfo.GetId();
 
+    InsertRowQuery->clearBindings();
     InsertRowQuery->bind(1, channelInfo.GetId());
-
-    if (channel.Accumulator.HasValues()) {
-        InsertRowQuery->bind(2, channel.Accumulator.Average());
-        InsertRowQuery->bind(3, channel.Accumulator.Min);
-        InsertRowQuery->bind(4, channel.Accumulator.Max);
-    } else {
-        InsertRowQuery->bindNoCopy(2, channel.LastValue); // avg == value
-        InsertRowQuery->bind(3);                          // bind NULL values
-        InsertRowQuery->bind(4);                          // bind NULL values
+    InsertRowQuery->bind(2, value);
+    if (!minimum.empty()) {
+        InsertRowQuery->bind(3, minimum);
     }
-
-    InsertRowQuery->bind(5, channel.Retained ? 1 : 0);
+    if (!maximum.empty()) {
+        InsertRowQuery->bind(4, maximum);
+    }
+    InsertRowQuery->bind(5, retained ? 1 : 0);
     InsertRowQuery->bind(6, std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch()).count());
     InsertRowQuery->exec();
     InsertRowQuery->reset();

@@ -4,6 +4,7 @@
 
 #include <wblib/json_utils.h>
 #include <wblib/wbmqtt.h>
+#include <math.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -54,19 +55,10 @@ namespace
         return MatchPattern(pattern.DeviceId, pattern.ControlId, device, control);
     }
 
-    bool IsBool(const std::string& type)
+    std::string RoundValue(double val, double round_to)
     {
-        return type == "switch" || type == "alarm" || type == "pushbutton";
-    }
-
-    bool IsText(const std::string& type)
-    {
-        return type == "text" || type == "rgb";
-    }
-
-    bool IsNumber(const std::string& type)
-    {
-        return !IsBool(type) && !IsText(type);
+        double v = round_to > 0.0 ? std::round(val / round_to) * round_to : val;
+        return WBMQTT::StringFormat("%.15g", v);
     }
 }
 
@@ -146,13 +138,12 @@ bool TChannelName::operator==(const TChannelName& rhs) const
 
 bool TAccumulator::Update(const string& payload)
 {
-    double value;
-
     // try to cast value to double and run stats
-    try {
-        value = stod(payload);
-    } catch (...) {
-        return false; // no processing for uncastable values
+    const char* str = payload.c_str();
+    char* end       = nullptr;
+    double value    = strtod(str, &end);
+    if (end == str || end != str + payload.length()) {
+        return false;
     }
 
     ++ValueCount;
@@ -219,17 +210,19 @@ uint32_t GetRecordCount(const TLoggingGroup& group)
     return sum;
 }
 
-TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver             driver,
-                             const TLoggerCache&       cache,
-                             std::unique_ptr<IStorage> storage,
-                             PMqttRpcServer            rpcServer,
-                             std::chrono::seconds      getValuesRpcRequestTimeout)
+TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver                   driver,
+                             const TLoggerCache&             cache,
+                             std::unique_ptr<IStorage>       storage,
+                             PMqttRpcServer                  rpcServer,
+                             std::unique_ptr<IChannelWriter> channelWriter,
+                             std::chrono::seconds            getValuesRpcRequestTimeout)
     : Cache(cache), 
       Driver(driver),
       Storage(std::move(storage)),
       RpcServer(rpcServer),
       Active(false),
-      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
+      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout),
+      ChannelWriter(std::move(channelWriter))
 {
 
     Filter = std::make_shared<TControlFilter>();
@@ -263,13 +256,14 @@ void TMQTTDBLogger::Start()
 
     auto nextSaveTime = steady_clock::now();
 
-    Driver->On<TControlValueEvent>([&](const TControlValueEvent& event) {
+    EventHandle = Driver->On<TControlValueEvent>([&](const TControlValueEvent& event) {
             {
                 std::lock_guard<std::mutex> lg(Mutex);
                 MessagesQueue.push({event.Control->GetDevice()->GetId(),
                                     event.Control->GetId(),
                                     event.RawValue,
-                                    event.Control->GetType()});
+                                    event.Control->GetType(),
+                                    event.Control->GetPrecision()});
             }
             WakeupCondition.notify_all();
         });
@@ -278,13 +272,13 @@ void TMQTTDBLogger::Start()
     Driver->SetFilter(Filter);
     Driver->WaitForReady();
 
+    RpcServer->Start();
     RpcServer->RegisterMethod("history",
                               "get_values",
                               bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
     RpcServer->RegisterMethod("history",
                               "get_channels",
                               bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
-    RpcServer->Start();
 
     for (auto& group : Cache.Groups) {
         group.LastUSaved = nextSaveTime;
@@ -318,6 +312,8 @@ void TMQTTDBLogger::Stop()
         }
         Active = false;
     }
+
+    Driver->RemoveEventHandler(EventHandle);
     WakeupCondition.notify_all();
     RpcServer->Stop();
     Driver->StopLoop();
@@ -340,12 +336,9 @@ void TMQTTDBLogger::ProcessMessages(queue<TValueFromMqtt>& messages)
                     LOG(Debug) << "\"" << group.Name << "\" " << msg.Device << "/" << msg.Control << ": \"" << msg.Value
                               << "\" " << status;
 
-                    if (IsNumber(msg.Type)) {
-                        channelData.Accumulator.Update(msg.Value);
-                    }
-
+                    bool isNumber = channelData.Accumulator.Update(msg.Value);
+                    UpdatePrecision(channelData, msg, isNumber);
                     channelData.LastValue          = msg.Value;
-                    //TODO: remove!!!!
                     channelData.Retained           = false;
                     channelData.HasUnsavedMessages = true;
                     break;
@@ -435,7 +428,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point cu
                 if (!channelInfo) {
                     channelInfo = Storage->CreateChannel(channelName);
                 }
-                Storage->WriteChannel(*channelInfo, channelData, writeTime, group.Name);
+                ChannelWriter->WriteChannel(*Storage, *channelInfo, channelData, writeTime, group.Name);
                 saved = true;
 
                 if (!channelData.Changed) {
@@ -731,4 +724,51 @@ PChannelInfo IStorage::FindChannel(const TChannelName& channelName) const
         return it->second;
     }
     return PChannelInfo();
+}
+
+void TChannelWriter::WriteChannel(IStorage&                storage, 
+                                  TChannelInfo&            channelInfo, 
+                                  const TChannel&          channelData,
+                                  system_clock::time_point writeTime,
+                                  const std::string&       groupName)
+{
+    if (channelData.Accumulator.HasValues()) {
+        storage.WriteChannel(channelInfo, 
+                             RoundValue(channelData.Accumulator.Average(), channelData.Precision),
+                             RoundValue(channelData.Accumulator.Min,       channelData.Precision),
+                             RoundValue(channelData.Accumulator.Max,       channelData.Precision),
+                             channelData.Retained,
+                             writeTime);
+    } else {
+        storage.WriteChannel(channelInfo, 
+                             channelData.LastValue,
+                             std::string(),
+                             std::string(),
+                             channelData.Retained,
+                             writeTime);
+    }
+}
+
+void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber)
+{
+    // Control has /meta/precision
+    if (msg.Precision != 0.0) {
+        channelData.Precision = msg.Precision;
+        return;
+    }
+    if (!isNumber) {
+        return;
+    }
+    // try to get precision from value
+    double precision = 1.0;
+    auto pos = msg.Value.find(".");
+    if (pos != std::string::npos) {
+        ++pos;
+        for (; pos != msg.Value.length(); ++pos) {
+            precision /= 10;
+        }
+    }
+    if ((channelData.Precision == 0.0) || (channelData.Precision > precision)) {
+        channelData.Precision = precision;
+    }
 }

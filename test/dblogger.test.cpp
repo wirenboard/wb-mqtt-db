@@ -11,14 +11,12 @@ namespace
     class TFakeStorage : public IStorage
     {
         WBMQTT::Testing::TLoggedFixture&      Fixture;
-        std::chrono::steady_clock::time_point StartTime;
         bool                                  HasRecords;
         uint64_t                              ChannelId;
 
     public:
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture)
             : Fixture(fixture),
-              StartTime(std::chrono::steady_clock::now()),
               HasRecords(false),
               ChannelId(1)
         {
@@ -30,22 +28,16 @@ namespace
         }
 
         void WriteChannel(TChannelInfo&                         channelInfo,
-                          const TChannel&                       channel,
-                          std::chrono::system_clock::time_point time,
-                          const std::string&                    groupName)
+                          const std::string&                    value,
+                          const std::string&                    minimum,
+                          const std::string&                    maximum,
+                          bool                                  retained,
+                          std::chrono::system_clock::time_point time)
         {
-            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-            Fixture.Emit()
-                << std::chrono::duration_cast<std::chrono::seconds>(now - StartTime).count();
-            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName();
-            Fixture.Emit() << "  Last value: " << channel.LastValue;
-            Fixture.Emit() << "  Changed: " << channel.Changed;
-            Fixture.Emit() << "  Accumulator value count: " << channel.Accumulator.ValueCount;
-            if (channel.Accumulator.HasValues()) {
-                Fixture.Emit() << "  Sum: " << channel.Accumulator.Average();
-                Fixture.Emit() << "  Min: " << channel.Accumulator.Min;
-                Fixture.Emit() << "  Max: " << channel.Accumulator.Max;
-            }
+            Fixture.Emit() << "Storage data:";
+            Fixture.Emit() << "  Value: " << value;
+            Fixture.Emit() << "  Min: "   << minimum;
+            Fixture.Emit() << "  Max: "   << maximum;
             HasRecords = true;
         }
 
@@ -70,6 +62,34 @@ namespace
         void GetChannels(IChannelVisitor& visitor) {}
         void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
         void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
+    };
+
+    class TFakeChannelWriter: public IChannelWriter
+    {
+        WBMQTT::Testing::TLoggedFixture&      Fixture;
+        std::chrono::steady_clock::time_point StartTime;
+        std::unique_ptr<TChannelWriter>       ChannelWriter;
+    public:
+        TFakeChannelWriter(WBMQTT::Testing::TLoggedFixture& fixture)
+            : Fixture(fixture),
+              StartTime(std::chrono::steady_clock::now()),
+              ChannelWriter(std::make_unique<TChannelWriter>())
+        {}
+
+        void WriteChannel(IStorage&                             storage, 
+                          TChannelInfo&                         channelInfo, 
+                          const TChannel&                       channelData,
+                          std::chrono::system_clock::time_point writeTime,
+                          const std::string&                    groupName) override
+        {
+            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+            Fixture.Emit() << std::chrono::duration_cast<std::chrono::seconds>(now - StartTime).count();
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName();
+            Fixture.Emit() << "  Last value: " << channelData.LastValue;
+            Fixture.Emit() << "  Changed: " << channelData.Changed;
+            Fixture.Emit() << "  Accumulator value count: " << channelData.Accumulator.ValueCount;
+            ChannelWriter->WriteChannel(storage, channelInfo, channelData, writeTime, groupName);
+        }
     };
 } // namespace
 
@@ -110,6 +130,7 @@ TEST_F(TDBLoggerTest, two_groups)
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TFakeChannelWriter>(*this),
                           std::chrono::seconds(5)));
 
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
@@ -141,6 +162,7 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TFakeChannelWriter>(*this),
                           std::chrono::seconds(5)));
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
@@ -159,4 +181,77 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     std::this_thread::sleep_for(std::chrono::seconds(8));
     logger->Stop();
     t.join();
+}
+
+TEST_F(TDBLoggerTest, round)
+{
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
+
+    std::shared_ptr<TMQTTDBLogger> logger(
+        new TMQTTDBLogger(driver,
+                        cache,
+                        std::make_unique<TFakeStorage>(*this),
+                        WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                        std::make_unique<TChannelWriter>(),
+                        std::chrono::seconds(5)));
+    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
+    std::thread t([=]() { logger->Start(); });
+    future.Wait();
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin/meta/precision", "0.1", 1, true}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, false}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, false}});
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, false}});
+    std::this_thread::sleep_for(std::chrono::seconds(8));
+    logger->Stop();
+    t.join();
+}
+
+TEST(TPrecisionTest, find_precision)
+{
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Precision = 0.01;
+        UpdatePrecision(channelData, msg, true);
+        ASSERT_EQ(channelData.Precision, 0.01);
+    }
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Precision = 0.01;
+        UpdatePrecision(channelData, msg, false);
+        ASSERT_EQ(channelData.Precision, 0.01);
+    }
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Value = "100";
+        UpdatePrecision(channelData, msg, true);
+        ASSERT_EQ(channelData.Precision, 1.0);
+    }
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Value = "100";
+        UpdatePrecision(channelData, msg, false);
+        ASSERT_EQ(channelData.Precision, 0.0);
+    }
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Value = "100.1";
+        UpdatePrecision(channelData, msg, true);
+        ASSERT_DOUBLE_EQ(channelData.Precision, 0.1);
+    }
+    {
+        TChannel       channelData;
+        TValueFromMqtt msg;
+        msg.Value = "100.001";
+        UpdatePrecision(channelData, msg, true);
+        ASSERT_DOUBLE_EQ(channelData.Precision, 0.001);
+    }
 }

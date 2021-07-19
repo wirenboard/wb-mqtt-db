@@ -92,10 +92,12 @@ namespace
             visitor.ProcessChannel(p);
         }
 
-        void WriteChannel(TChannelInfo&                         channelInfo, 
-                          const TChannel&                       channelData,
-                          std::chrono::system_clock::time_point time,
-                          const std::string&                    groupName) {}
+        void WriteChannel(TChannelInfo&                         channelInfo,
+                          const std::string&                    value,
+                          const std::string&                    minimum,
+                          const std::string&                    maximum,
+                          bool                                  retained,
+                          std::chrono::system_clock::time_point time) {}
         void Commit() {}
         void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
         void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
@@ -139,6 +141,7 @@ TEST_F(TRpcTest, get_channels)
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
@@ -159,6 +162,7 @@ TEST_F(TRpcTest, get_records_v0)
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
@@ -186,6 +190,7 @@ TEST_F(TRpcTest, get_records_v1)
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");

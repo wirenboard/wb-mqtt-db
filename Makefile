@@ -22,8 +22,9 @@ endif
 LDFLAGS=-lwbmqtt1 -lsqlite3
 
 ifeq ($(DEBUG), 1)
-	CXXFLAGS+=-ggdb -O0 -pg
-	LDFLAGS+=-pg
+	CXXFLAGS+=-O0 -g
+	# -pg
+	#LDFLAGS+=-pg
 else
 	CXXFLAGS+=-Os -DNDEBUG
 endif
@@ -66,6 +67,7 @@ $(TEST_DIR)/$(TEST_BIN): $(OBJ) $(SQLITECPP_OBJ) $(TEST_OBJECTS)
 
 test: $(TEST_DIR)/$(TEST_BIN)
 	rm -f $(TEST_DIR)/*.dat.out
+ifneq ($(DEBUG), 1)
 	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
 		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
 		if [ $$? = 180 ]; then \
@@ -75,8 +77,10 @@ test: $(TEST_DIR)/$(TEST_BIN)
     else \
         $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
 	fi
+endif
 
-clean :
+clean:
+	-rm -f $(TEST_DIR)/*.dat.out
 	-rm -f *.o $(DB_BIN)
 	-rm -f $(SQLITECPP_DIR)/*.o
 	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)

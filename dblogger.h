@@ -114,7 +114,30 @@ struct TChannel
     bool Changed = false;
 
     bool Retained = false;
+
+    double Precision = 0.0;
 };
+
+struct TValueFromMqtt
+{
+    std::string Device;
+    std::string Control;
+    std::string Value;
+    std::string Type;
+    double      Precision = 0.0;
+};
+
+/**
+ * @brief Update Precision of the channel according to message received from MQTT.
+ *        A value from /meta/precision is used if present.
+ *        If /meta/precision is missing and isNumber == true,
+ *        try to set precision according to value's fractional part.
+ * 
+ * @param channelData channel to update
+ * @param msg message from MQTT
+ * @param isNumber flag indicating that message contains number
+ */
+void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber);
 
 //! A group of channels with storage settings
 struct TLoggingGroup
@@ -201,9 +224,11 @@ public:
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
     virtual void WriteChannel(TChannelInfo&                         channelInfo,
-                              const TChannel&                       channel,
-                              std::chrono::system_clock::time_point time,
-                              const std::string&                    groupName) = 0;
+                              const std::string&                    value,
+                              const std::string&                    minimum,
+                              const std::string&                    maximum,
+                              bool                                  retained,
+                              std::chrono::system_clock::time_point time) = 0;
 
     /**
      * @brief Save all modifications
@@ -260,22 +285,37 @@ public:
     bool MatchTopic(const std::string& topic) const override;
 };
 
-struct TValueFromMqtt
+class IChannelWriter
 {
-    std::string Device;
-    std::string Control;
-    std::string Value;
-    std::string Type;
+public:
+    virtual ~IChannelWriter() = default;
+
+    virtual void WriteChannel(IStorage&                             storage, 
+                              TChannelInfo&                         channelInfo, 
+                              const TChannel&                       channelData,
+                              std::chrono::system_clock::time_point writeTime,
+                              const std::string&                    groupName) = 0;
+};
+
+class TChannelWriter: public IChannelWriter
+{
+public:
+    void WriteChannel(IStorage&                             storage, 
+                      TChannelInfo&                         channelInfo, 
+                      const TChannel&                       channelData,
+                      std::chrono::system_clock::time_point writeTime,
+                      const std::string&                    groupName) override;
 };
 
 class TMQTTDBLogger
 {
 public:
-    TMQTTDBLogger(WBMQTT::PDeviceDriver     driver,
-                  const TLoggerCache&       cache,
-                  std::unique_ptr<IStorage> storage,
-                  WBMQTT::PMqttRpcServer    rpcServer,
-                  std::chrono::seconds      getValuesRpcRequestTimeout);
+    TMQTTDBLogger(WBMQTT::PDeviceDriver           driver,
+                  const TLoggerCache&             cache,
+                  std::unique_ptr<IStorage>       storage,
+                  WBMQTT::PMqttRpcServer          rpcServer,
+                  std::unique_ptr<IChannelWriter> channelWriter,
+                  std::chrono::seconds            getValuesRpcRequestTimeout);
 
     ~TMQTTDBLogger();
 
@@ -295,16 +335,18 @@ private:
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    TLoggerCache                    Cache;
-    WBMQTT::PDeviceDriver           Driver;
-    std::unique_ptr<IStorage>       Storage;
-    WBMQTT::PMqttRpcServer          RpcServer;
-    std::mutex                      Mutex;
-    std::condition_variable         WakeupCondition;
-    bool                            Active;
-    std::queue<TValueFromMqtt>      MessagesQueue;
-    std::chrono::seconds            GetValuesRpcRequestTimeout;
-    std::shared_ptr<TControlFilter> Filter;
+    TLoggerCache                      Cache;
+    WBMQTT::PDeviceDriver             Driver;
+    std::unique_ptr<IStorage>         Storage;
+    WBMQTT::PMqttRpcServer            RpcServer;
+    std::mutex                        Mutex;
+    std::condition_variable           WakeupCondition;
+    bool                              Active;
+    std::queue<TValueFromMqtt>        MessagesQueue;
+    std::chrono::seconds              GetValuesRpcRequestTimeout;
+    std::shared_ptr<TControlFilter>   Filter;
+    WBMQTT::PDriverEventHandlerHandle EventHandle;
+    std::unique_ptr<IChannelWriter>   ChannelWriter;
 };
 
 //! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of
