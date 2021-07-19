@@ -1,0 +1,12 @@
+Record id: 1
+	Channel: wb-adc/Vin[1]
+	Value: 10
+	Time: 50
+	Retain: 1
+Record id: 2
+	Channel: wb-adc/Vin[1]
+	Average: 11
+	Time: 100
+	Min: 10
+	Max: 12
+	Retain: 0
