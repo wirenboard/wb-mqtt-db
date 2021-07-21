@@ -110,6 +110,9 @@ struct TChannel
     //! Channel's last save time
     std::chrono::steady_clock::time_point LastSaved;
 
+    //! Receive time of a last message from MQTT
+    std::chrono::system_clock::time_point LastDataTime;
+
     //! True if channel's LastValue has been modified since last save to storage
     bool Changed = false;
 
@@ -120,11 +123,12 @@ struct TChannel
 
 struct TValueFromMqtt
 {
-    std::string Device;
-    std::string Control;
-    std::string Value;
-    std::string Type;
-    double      Precision = 0.0;
+    std::string                           Device;
+    std::string                           Control;
+    std::string                           Value;
+    std::string                           Type;
+    double                                Precision = 0.0;
+    std::chrono::system_clock::time_point Time;
 };
 
 /**

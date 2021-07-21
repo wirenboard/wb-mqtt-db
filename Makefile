@@ -23,8 +23,6 @@ LDFLAGS=-lwbmqtt1 -lsqlite3
 
 ifeq ($(DEBUG), 1)
 	CXXFLAGS+=-O0 -g
-	# -pg
-	#LDFLAGS+=-pg
 else
 	CXXFLAGS+=-Os -DNDEBUG
 endif

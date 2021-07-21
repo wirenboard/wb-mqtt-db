@@ -263,7 +263,8 @@ void TMQTTDBLogger::Start()
                                     event.Control->GetId(),
                                     event.RawValue,
                                     event.Control->GetType(),
-                                    event.Control->GetPrecision()});
+                                    event.Control->GetPrecision(),
+                                    std::chrono::system_clock::now()});
             }
             WakeupCondition.notify_all();
         });
@@ -339,6 +340,7 @@ void TMQTTDBLogger::ProcessMessages(queue<TValueFromMqtt>& messages)
                     bool isNumber = channelData.Accumulator.Update(msg.Value);
                     UpdatePrecision(channelData, msg, isNumber);
                     channelData.LastValue          = msg.Value;
+                    channelData.LastDataTime       = msg.Time;
                     channelData.Retained           = false;
                     channelData.HasUnsavedMessages = true;
                     break;
@@ -740,12 +742,14 @@ void TChannelWriter::WriteChannel(IStorage&                storage,
                              channelData.Retained,
                              writeTime);
     } else {
+        // For single values set time to receive time not to write time
+        writeTime = (channelData.Changed ? channelData.LastDataTime : writeTime);
         storage.WriteChannel(channelInfo, 
-                             channelData.LastValue,
-                             std::string(),
-                             std::string(),
-                             channelData.Retained,
-                             writeTime);
+                            channelData.LastValue,
+                            std::string(),
+                            std::string(),
+                            channelData.Retained,
+                            writeTime);
     }
 }
 
