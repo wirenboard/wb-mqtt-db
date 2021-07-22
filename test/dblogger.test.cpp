@@ -24,7 +24,16 @@ namespace
 
         PChannelInfo CreateChannel(const TChannelName& channelName) override
         {
+            Fixture.Emit() << "Create channel " << channelName;
             return CreateChannelPrivate(ChannelId++, channelName.Device, channelName.Control);
+        }
+
+        void SetChannelPrecision(TChannelInfo& channelInfo, double precision)
+        {
+            if (channelInfo.GetPrecision() != precision) {
+                Fixture.Emit() << "Set precision for " << channelInfo.GetName() << " to " << precision;
+                SetPrecision(channelInfo, precision);
+            }
         }
 
         void WriteChannel(TChannelInfo&                         channelInfo,
@@ -183,9 +192,9 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     t.join();
 }
 
-TEST_F(TDBLoggerTest, round)
+TEST_F(TDBLoggerTest, save_precision)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    TLoggerCache cache(LoadConfig(testRootDir + "/save_precision.conf", schemaFile).Cache);
     auto backend = WBMQTT::NewDriverBackend(Client);
     auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
 
@@ -202,10 +211,12 @@ TEST_F(TDBLoggerTest, round)
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin/meta/precision", "0.1", 1, true}});
     Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, false}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, false}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, false}});
-    std::this_thread::sleep_for(std::chrono::seconds(8));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.001", 1, false}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "13", 1, false}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "14.001", 1, false}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     logger->Stop();
     t.join();
 }

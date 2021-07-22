@@ -16,8 +16,7 @@ namespace
         {}
 
         bool ProcessRecord(int                                   recordId,
-                           int                                   channelNameId,
-                           const TChannelName&                   channelName,
+                           const TChannelInfo&                   channel,
                            double                                averageValue,
                            std::chrono::system_clock::time_point timestamp,
                            double                                minValue,
@@ -25,7 +24,7 @@ namespace
                            bool                                  retain)
         {
             Fixture.Emit() << "Record id: " << recordId;
-            Fixture.Emit() << "\tChannel: " << channelName << "[" << channelNameId << "]";
+            Fixture.Emit() << "\tChannel: " << channel.GetName() << "[" << channel.GetId() << "]";
             Fixture.Emit() << "\tAverage: " << averageValue;
             Fixture.Emit() << "\tTime: "    << std::chrono::duration_cast<std::chrono::seconds>(timestamp - std::chrono::system_clock::time_point()).count();
             Fixture.Emit() << "\tMin: "     << minValue;
@@ -35,14 +34,13 @@ namespace
         }
 
         bool ProcessRecord(int                                   recordId,
-                           int                                   channelNameId,
-                           const TChannelName&                   channelName,
+                           const TChannelInfo&                   channel,
                            const std::string&                    value,
                            std::chrono::system_clock::time_point timestamp,
                            bool                                  retain)
         {
             Fixture.Emit() << "Record id: " << recordId;
-            Fixture.Emit() << "\tChannel: " << channelName << "[" << channelNameId << "]";
+            Fixture.Emit() << "\tChannel: " << channel.GetName() << "[" << channel.GetId() << "]";
             Fixture.Emit() << "\tValue: "   << value;
             Fixture.Emit() << "\tTime: "    << std::chrono::duration_cast<std::chrono::seconds>(timestamp - std::chrono::system_clock::time_point()).count();
             Fixture.Emit() << "\tRetain: "  << retain;
@@ -63,6 +61,7 @@ namespace
             Fixture.Emit() << "\tName: "      << channel->GetName();
             Fixture.Emit() << "\tCount: "     << channel->GetRecordCount();
             Fixture.Emit() << "\tLast time: " << std::chrono::duration_cast<std::chrono::seconds>(channel->GetLastRecordTime() - std::chrono::system_clock::time_point()).count();
+            Fixture.Emit() << "\tPrecision: " << channel->GetPrecision();
         }
     };
 }
@@ -156,6 +155,7 @@ TEST_F(TSqliteStorageTest, loadOldValues)
 
     TChannelName vinChannelName("wb-adc", "Vin");
     auto vin = storage.CreateChannel(vinChannelName);
+    storage.SetChannelPrecision(*vin, 0.01);
     std::chrono::system_clock::time_point time;
     for (size_t i = 1; i < 10; ++i) {
         storage.WriteChannel(*vin, std::to_string(i), "", "", false, time + std::chrono::seconds(i * 10));
@@ -171,4 +171,14 @@ TEST_F(TSqliteStorageTest, loadOldValues)
     TSqliteStorage storage2("file::memory:?cache=shared");
     TChannelVisitor cv(*this);
     storage2.GetChannels(cv);
+}
+
+TEST_F(TSqliteStorageTest, precision)
+{
+    TSqliteStorage storage(":memory:");
+    auto vin = storage.CreateChannel({"wb-adc", "Vin"});
+    ASSERT_EQ(vin->GetPrecision(), 0.0);
+    storage.SetChannelPrecision(*vin, 0.01);
+    storage.Commit();
+    ASSERT_EQ(vin->GetPrecision(), 0.01);
 }

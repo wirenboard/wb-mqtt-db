@@ -116,6 +116,7 @@ void TSqliteStorage::CreateTables(int dbVersion)
              "int_id INTEGER PRIMARY KEY AUTOINCREMENT, "
              "device VARCHAR(255), "
              "control VARCHAR(255), "
+             "precision REAL, "
              "UNIQUE(device,control) "
              ")  ");
 
@@ -160,7 +161,7 @@ void TSqliteStorage::CreateIndices()
 void TSqliteStorage::Load()
 {
     std::lock_guard<std::mutex> lg(Mutex);
-    SQLite::Statement query(*DB, "SELECT int_id, device, control FROM channels");
+    SQLite::Statement query(*DB, "SELECT int_id, device, control, precision FROM channels");
     SQLite::Statement rowCountQuery(*DB, "SELECT COUNT(uid), MAX(timestamp)/1000 FROM data WHERE channel=?");
 
     while (query.executeStep()) {
@@ -171,6 +172,9 @@ void TSqliteStorage::Load()
         SetRecordCount(*channel, rowCountQuery.getColumn(0));
         if (!rowCountQuery.getColumn(1).isNull()) {
             SetLastRecordTime(*channel, std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
+        }
+        if (!query.getColumn(3).isNull()) {
+            SetPrecision(*channel, query.getColumn(3).getDouble());
         }
     }
 }
@@ -304,6 +308,24 @@ PChannelInfo TSqliteStorage::CreateChannel(const TChannelName& channelName)
     return CreateChannelPrivate(DB->getLastInsertRowid(), channelName.Device, channelName.Control);
 }
 
+/**
+ * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+ */
+void TSqliteStorage::SetChannelPrecision(TChannelInfo& channelInfo, double precision)
+{
+    if (precision == channelInfo.GetPrecision()) {
+        return;
+    }
+
+    LOG(Debug) << "Set channel's " << channelInfo.GetName() << " precision to " << precision;
+
+    SQLite::Statement query(*DB, "UPDATE channels SET precision = ? WHERE int_id = ?");
+    query.bind(1, precision);
+    query.bind(2, channelInfo.GetId());
+    query.exec();
+    SetPrecision(channelInfo, precision);
+}
+
 void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
                                 const std::vector<TChannelName>&      channels,
                                 std::chrono::system_clock::time_point startTime,
@@ -376,8 +398,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
         if (!query.getColumn(5).isNull()) {
             if (!visitor.ProcessRecord(recordId,
-                                       channelId,
-                                       channelIdToNameMap[channelId]->GetName(),
+                                       *channelIdToNameMap[channelId],
                                        query.getColumn(2).getDouble(),
                                        timestamp,
                                        query.getColumn(4).getDouble(),
@@ -387,8 +408,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
 
         } else {
             if (!visitor.ProcessRecord(recordId,
-                                       channelId,
-                                       channelIdToNameMap[channelId]->GetName(),
+                                       *channelIdToNameMap[channelId],
                                        query.getColumn(2).getString(),
                                        timestamp,
                                        retain))

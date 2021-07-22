@@ -55,6 +55,7 @@ class TChannelInfo
     int                                   RecordCount;
     std::chrono::system_clock::time_point LastRecordTime;
     TChannelName                          Name;
+    double                                Precision;
 
     TChannelInfo(int64_t id, const std::string& device, const std::string& control);
 
@@ -65,6 +66,9 @@ public:
     int                                          GetRecordCount() const;
     const std::chrono::system_clock::time_point& GetLastRecordTime() const;
     int64_t                                      GetId() const;
+
+    //! Value's precision if channel stores numbers. 0.0 - no rounding
+    double GetPrecision() const;
 };
 
 typedef std::shared_ptr<TChannelInfo> PChannelInfo;
@@ -190,8 +194,7 @@ public:
     virtual ~IRecordsVisitor() = default;
 
     virtual bool ProcessRecord(int                                   recordId,
-                               int                                   channelNameId,
-                               const TChannelName&                   channelName,
+                               const TChannelInfo&                   channel,
                                double                                averageValue,
                                std::chrono::system_clock::time_point timestamp,
                                double                                minValue,
@@ -199,8 +202,7 @@ public:
                                bool                                  retain) = 0;
 
     virtual bool ProcessRecord(int                                   recordId,
-                               int                                   channelNameId,
-                               const TChannelName&                   channelName,
+                               const TChannelInfo&                   channel,
                                const std::string&                    value,
                                std::chrono::system_clock::time_point timestamp,
                                bool                                  retain) = 0;
@@ -223,6 +225,11 @@ public:
     virtual ~IStorage() = default;
 
     virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
+
+    /**
+     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     */
+    virtual void SetChannelPrecision(TChannelInfo& channelInfo, double precision) = 0;
 
     /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
@@ -271,6 +278,7 @@ protected:
     PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
     void SetRecordCount(TChannelInfo& channel, int recordCount);
     void SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time);
+    void SetPrecision(TChannelInfo& channel, double precision);
     const std::unordered_map<TChannelName, PChannelInfo>& GetChannelsPrivate() const;
     PChannelInfo FindChannel(const TChannelName& channelName) const;
 
@@ -376,4 +384,38 @@ public:
      * @brief Enables spend time calculation
      */
     void Enable();
+};
+
+class TJsonRecordsVisitor : public IRecordsVisitor
+{
+    int                                   ProtocolVersion;
+    int                                   RowLimit;
+    int                                   RowCount;
+    std::chrono::steady_clock::time_point StartTime;
+    std::chrono::steady_clock::duration   Timeout;
+
+    bool CommonProcessRecord(Json::Value&                          row,
+                             int                                   recordId,
+                             const TChannelInfo&                   channel,
+                             std::chrono::system_clock::time_point timestamp,
+                             bool                                  retain);
+
+public:
+    Json::Value Root;
+
+    TJsonRecordsVisitor(int protocolVersion, int rowLimit, std::chrono::steady_clock::duration timeout);
+
+    bool ProcessRecord(int                                   recordId,
+                       const TChannelInfo&                   channel,
+                       const std::string&                    value,
+                       std::chrono::system_clock::time_point timestamp,
+                       bool                                  retain) override;
+
+    bool ProcessRecord(int                                   recordId,
+                       const TChannelInfo&                   channel,
+                       double                                averageValue,
+                       std::chrono::system_clock::time_point timestamp,
+                       double                                minValue,
+                       double                                maxValue,
+                       bool                                  retain) override;
 };

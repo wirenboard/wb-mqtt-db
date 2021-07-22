@@ -208,6 +208,9 @@ namespace
                 "SELECT uid, channel, value, timestamp, max, min, retained "
                 "FROM data_old");
 
+        // add precision column to channel
+        db.exec("ALTER TABLE channel ADD COLUMN precision REAL");
+
         // drop old data table
         db.exec("DROP TABLE data_old");
 

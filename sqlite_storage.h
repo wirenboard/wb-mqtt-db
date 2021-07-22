@@ -39,6 +39,11 @@ public:
     PChannelInfo CreateChannel(const TChannelName& channelName);
 
     /**
+     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     */
+    void SetChannelPrecision(TChannelInfo& channelInfo, double precision);
+
+    /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
     void WriteChannel(TChannelInfo&                         channelInfo,

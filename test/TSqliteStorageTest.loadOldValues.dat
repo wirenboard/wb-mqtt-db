@@ -2,7 +2,9 @@ Channel id: 2
 	Name: wb-adc/A1
 	Count: 9
 	Last time: 95
+	Precision: 0
 Channel id: 1
 	Name: wb-adc/Vin
 	Count: 9
 	Last time: 90
+	Precision: 0.01

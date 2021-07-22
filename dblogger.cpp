@@ -500,92 +500,76 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
     return visitor.Root;
 }
 
-class TJsonRecordsVisitor : public IRecordsVisitor
+TJsonRecordsVisitor::TJsonRecordsVisitor(int protocolVersion, int rowLimit, steady_clock::duration timeout)
+    : ProtocolVersion(protocolVersion), RowLimit(rowLimit), RowCount(0), Timeout(timeout)
 {
-    int                      ProtocolVersion;
-    int                      RowLimit;
-    int                      RowCount;
-    steady_clock::time_point StartTime;
-    steady_clock::duration   Timeout;
+    StartTime      = steady_clock::now();
+    Root["values"] = Json::Value(Json::arrayValue);
+}
 
-    bool CommonProcessRecord(Json::Value&                          row,
-                             int                                   recordId,
-                             int                                   channelNameId,
-                             const TChannelName&                   channelName,
-                             std::chrono::system_clock::time_point timestamp,
-                             bool                                  retain)
-    {
-        if (steady_clock::now() - StartTime >= Timeout) {
-            wb_throw(TRequestTimeoutException, "get_values");
-        }
 
-        if (RowLimit > 0 && RowCount >= RowLimit) {
-            Root["has_more"] = true;
-            return false;
-        }
-
-        if (ProtocolVersion == 1) {
-            row["i"] = recordId;
-            row["c"] = channelNameId;
-            row["t"] =
-                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
-        } else {
-            row["uid"]     = recordId;
-            row["device"]  = channelName.Device;
-            row["control"] = channelName.Control;
-            row["timestamp"] =
-                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
-        }
-
-        row["retain"] = retain;
-
-        // append element to values list
-        Root["values"].append(row);
-        ++RowCount;
-
-        return true;
+bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                          row,
+                                              int                                   recordId,
+                                              const TChannelInfo&                   channel,
+                                              std::chrono::system_clock::time_point timestamp,
+                                              bool                                  retain)
+{
+    if (steady_clock::now() - StartTime >= Timeout) {
+        wb_throw(TRequestTimeoutException, "get_values");
     }
 
-public:
-    Json::Value Root;
-
-    TJsonRecordsVisitor(int protocolVersion, int rowLimit, steady_clock::duration timeout)
-        : ProtocolVersion(protocolVersion), RowLimit(rowLimit), RowCount(0), Timeout(timeout)
-    {
-        StartTime      = steady_clock::now();
-        Root["values"] = Json::Value(Json::arrayValue);
+    if (RowLimit > 0 && RowCount >= RowLimit) {
+        Root["has_more"] = true;
+        return false;
     }
 
-    bool ProcessRecord(int                                   recordId,
-                       int                                   channelNameId,
-                       const TChannelName&                   channelName,
-                       const std::string&                    value,
-                       std::chrono::system_clock::time_point timestamp,
-                       bool                                  retain)
-    {
-        Json::Value row;
-        row[(ProtocolVersion == 1) ? "v" : "value"] = value;
-        return CommonProcessRecord(row, recordId, channelNameId, channelName, timestamp, retain);
+    if (ProtocolVersion == 1) {
+        row["i"] = recordId;
+        row["c"] = channel.GetId();
+        row["t"] =
+            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+    } else {
+        row["uid"]     = recordId;
+        row["device"]  = channel.GetName().Device;
+        row["control"] = channel.GetName().Control;
+        row["timestamp"] =
+            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
     }
 
-    bool ProcessRecord(int                                   recordId,
-                       int                                   channelNameId,
-                       const TChannelName&                   channelName,
-                       double                                averageValue,
-                       std::chrono::system_clock::time_point timestamp,
-                       double                                minValue,
-                       double                                maxValue,
-                       bool                                  retain)
-    {
-        Json::Value row;
+    row["retain"] = retain;
 
-        row["min"]                                  = minValue;
-        row["max"]                                  = maxValue;
-        row[(ProtocolVersion == 1) ? "v" : "value"] = averageValue;
+    // append element to values list
+    Root["values"].append(row);
+    ++RowCount;
 
-        return CommonProcessRecord(row, recordId, channelNameId, channelName, timestamp, retain);
-    }
-};
+    return true;
+}
+
+bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
+                    const TChannelInfo&                   channel,
+                    const std::string&                    value,
+                    std::chrono::system_clock::time_point timestamp,
+                    bool                                  retain)
+{
+    Json::Value row;
+    row[(ProtocolVersion == 1) ? "v" : "value"] = value;
+    return CommonProcessRecord(row, recordId, channel, timestamp, retain);
+}
+
+bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
+                    const TChannelInfo&                   channel,
+                    double                                averageValue,
+                    std::chrono::system_clock::time_point timestamp,
+                    double                                minValue,
+                    double                                maxValue,
+                    bool                                  retain)
+{
+    Json::Value row;
+    row["min"]                                  = RoundValue(minValue, channel.GetPrecision());
+    row["max"]                                  = RoundValue(maxValue, channel.GetPrecision());
+    row[(ProtocolVersion == 1) ? "v" : "value"] = RoundValue(averageValue, channel.GetPrecision());
+    return CommonProcessRecord(row, recordId, channel, timestamp, retain);
+}
 
 Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 {
@@ -674,7 +658,7 @@ void TBenchmark::Enable()
 }
 
 TChannelInfo::TChannelInfo(int64_t id, const std::string& device, const std::string& control)
-    : Id(id), RecordCount(0), Name(device, control)
+    : Id(id), RecordCount(0), Name(device, control), Precision(0.0)
 {}
 
 const TChannelName& TChannelInfo::GetName() const
@@ -697,6 +681,11 @@ int64_t TChannelInfo::GetId() const
     return Id;
 }
 
+double TChannelInfo::GetPrecision() const
+{
+    return Precision;
+}
+
 PChannelInfo IStorage::CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control)
 {
     PChannelInfo p(new TChannelInfo(id, device, control));
@@ -712,6 +701,11 @@ void IStorage::SetRecordCount(TChannelInfo& channel, int recordCount)
 void IStorage::SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time)
 {
     channel.LastRecordTime = time;
+}
+
+void IStorage::SetPrecision(TChannelInfo& channel, double precision)
+{
+    channel.Precision = precision;
 }
 
 const std::unordered_map<TChannelName, PChannelInfo>& IStorage::GetChannelsPrivate() const
@@ -736,9 +730,9 @@ void TChannelWriter::WriteChannel(IStorage&                storage,
 {
     if (channelData.Accumulator.HasValues()) {
         storage.WriteChannel(channelInfo, 
-                             RoundValue(channelData.Accumulator.Average(), channelData.Precision),
-                             RoundValue(channelData.Accumulator.Min,       channelData.Precision),
-                             RoundValue(channelData.Accumulator.Max,       channelData.Precision),
+                             WBMQTT::FormatFloat(channelData.Accumulator.Average()),
+                             WBMQTT::FormatFloat(channelData.Accumulator.Min),
+                             WBMQTT::FormatFloat(channelData.Accumulator.Max),
                              channelData.Retained,
                              writeTime);
     } else {
@@ -751,6 +745,7 @@ void TChannelWriter::WriteChannel(IStorage&                storage,
                             channelData.Retained,
                             writeTime);
     }
+    storage.SetChannelPrecision(channelInfo, channelData.Precision);
 }
 
 void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber)

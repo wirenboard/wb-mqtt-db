@@ -10,6 +10,7 @@ Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
 Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
 Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
 Publish: /devices/wb-adc/controls/Vin: '12.000' (QoS 1, retained)
+Create channel wb-adc/Vin
 0
 Write "most specific" wb-adc/Vin
   Last value: 12.000
@@ -19,8 +20,10 @@ Storage data:
   Value: 12.000
   Min: 
   Max: 
+Set precision for wb-adc/Vin to 0.001
 Commit
 Publish: /devices/wb-adc/controls/A1: '2.000' (QoS 1, retained)
+Create channel wb-adc/A1
 0
 Write "general" wb-adc/A1
   Last value: 2.000
@@ -30,6 +33,7 @@ Storage data:
   Value: 2.000
   Min: 
   Max: 
+Set precision for wb-adc/A1 to 0.001
 Commit
 Publish: /devices/wb-adc/controls/Vin: '13.000' (QoS 1, retained)
 Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1, retained)
