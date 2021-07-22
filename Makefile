@@ -88,7 +88,7 @@ install: all
 
 	install -D -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
 	install -D -m 0755  $(DB_CONFCONVERT) $(DESTDIR)/usr/bin/$(DB_CONFCONVERT)
-	install -D -m 0755  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
+	install -D -m 0644  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
 
 	install -D -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
 	install -D -m 0644  wb-mqtt-db.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json
