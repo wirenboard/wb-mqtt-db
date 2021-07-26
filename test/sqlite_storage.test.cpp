@@ -25,10 +25,10 @@ namespace
         {
             Fixture.Emit() << "Record id: " << recordId;
             Fixture.Emit() << "\tChannel: " << channel.GetName() << "[" << channel.GetId() << "]";
-            Fixture.Emit() << "\tAverage: " << averageValue;
+            Fixture.Emit() << "\tAverage: " << WBMQTT::FormatFloat(averageValue);
             Fixture.Emit() << "\tTime: "    << std::chrono::duration_cast<std::chrono::seconds>(timestamp - std::chrono::system_clock::time_point()).count();
-            Fixture.Emit() << "\tMin: "     << minValue;
-            Fixture.Emit() << "\tMax: "     << maxValue;
+            Fixture.Emit() << "\tMin: "     << WBMQTT::FormatFloat(minValue);
+            Fixture.Emit() << "\tMax: "     << WBMQTT::FormatFloat(maxValue);
             Fixture.Emit() << "\tRetain: "  << retain;
             return true;
         }
@@ -181,4 +181,44 @@ TEST_F(TSqliteStorageTest, precision)
     storage.SetChannelPrecision(*vin, 0.01);
     storage.Commit();
     ASSERT_EQ(vin->GetPrecision(), 0.01);
+}
+
+TEST_F(TSqliteStorageTest, get_text_records)
+{
+    auto storage = std::make_unique<TSqliteStorage>(":memory:");
+    auto channel1 = storage->CreateChannel( {"test", "test"});
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+
+    auto channel2 = storage->CreateChannel( {"test", "test2"});
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+
+    auto channel3 = storage->CreateChannel( {"test", "test3"});
+    storage->WriteChannel(*channel3, "1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel3, "12", "10", "12", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel3, "-165.777554", "1", "100", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+
+
+    TRecordsVisitor visitor(*this);
+
+    Emit() << "## Raw values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test"}, {"test", "test2"}, {"test", "test3"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        std::chrono::seconds(0));
+
+    Emit() << "\n## Average values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test"}, {"test", "test2"}, {"test", "test3"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        std::chrono::seconds(20));
 }
