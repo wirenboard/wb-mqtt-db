@@ -1,25 +1,36 @@
-Subscribe: /devices/+/meta/driver (QoS 0)
-Subscribe: /devices/+/meta/+ (QoS 0)
-Subscribe: /devices/+/controls/+/meta/+ (QoS 0)
-Subscribe: /devices/+/controls/+ (QoS 0)
-Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
-Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
-Publish: /rpc/v1/db_logger/history/get_values/test: '{"id":1,"params":{"channels":[["wb-adc","Vin"],["wb-adc","A1"]],"ver":0,"timestamp":{"lt":954566430}}}' (QoS 0, retained)
-RPC get_records
+Register RPC history get_values
+Register RPC history get_channels
+RPC call get_values
+Arguments
+{"channels":[["wb-adc","Vin"],["wb-adc","A1"]],"ver":0,"timestamp":{"lt":954566430}}
+Storage GetRecords
   wb-adc/Vin
   wb-adc/A1
   1970-01-01 00:00:00 - 2000-04-01 05:20:30
   from -1
   maxRecords 2147483647
   minInterval 0 ms
-Publish: /rpc/v1/db_logger/history/get_values/test/reply: '{"error":null,"id":1,"result":{"values":[{"control":"Vin","device":"wb-adc","retain":false,"timestamp":954584430,"uid":1,"value":"test1"},{"control":"Vin","device":"wb-adc","max":"30","min":"20","retain":true,"timestamp":954584430,"uid":2,"value":"10"}]}}' (QoS 2)
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_values/+
-Publish: /rpc/v1/db_logger/history/get_values: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_channels/+
-Publish: /rpc/v1/db_logger/history/get_channels: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /devices/+/controls/+
-Unsubscribe -- dblogger_test: /devices/+/controls/+/meta/+
-Unsubscribe -- dblogger_test: /devices/+/meta/+
-stop: dblogger_test
+Response
+{
+  "values" : 
+  [
+    {
+      "control" : "Vin",
+      "device" : "wb-adc",
+      "retain" : false,
+      "timestamp" : 954584430,
+      "uid" : 1,
+      "value" : "test1"
+    },
+    {
+      "control" : "Vin",
+      "device" : "wb-adc",
+      "max" : "30",
+      "min" : "20",
+      "retain" : true,
+      "timestamp" : 954584430,
+      "uid" : 2,
+      "value" : "10"
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <wblib/wbmqtt.h>
+#include <wblib/json_utils.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
 
@@ -40,7 +41,7 @@ namespace
                         uint32_t                              maxRecords,
                         std::chrono::milliseconds             minInterval)
         {
-            Fixture.Emit() << "RPC get_records";
+            Fixture.Emit() << "Storage GetRecords";
             for (const auto& channel : channels) {
                 Fixture.Emit() << "  " << channel;
             }
@@ -109,22 +110,64 @@ namespace
         void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
         void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
     };
+
+    class TFakeMqttRpcServer: public WBMQTT::TMqttRpcServer
+    {
+        WBMQTT::Testing::TLoggedFixture& Fixture;
+        std::map<std::string, WBMQTT::TMqttRpcServer::TMethodHandler> Handlers;
+    public:
+        TFakeMqttRpcServer(WBMQTT::Testing::TLoggedFixture& fixture)
+            : Fixture(fixture)
+        {}
+
+        void RegisterMethod(const std::string& service, const std::string& method, WBMQTT::TMqttRpcServer::TMethodHandler handler)
+        {
+            Fixture.Emit()<< "Register RPC " << service << " " << method;
+            Handlers[method] = handler;
+        }
+
+        void CallRpc(const std::string& method, const std::string& args)
+        {
+            Json::Value argsJson;
+            {
+                std::stringstream ss;
+                ss << args;
+                Json::CharReaderBuilder builder;
+                Json::String errs;
+                // Report failures and their locations in the document.
+                if (!parseFromStream(builder, ss, &argsJson, &errs)) {
+                    throw std::runtime_error("Failed to parse JSON:" + errs);
+                }
+
+                Fixture.Emit() << "RPC call " << method;
+                Fixture.Emit() << "Arguments";
+                Fixture.Emit() << args;
+            }
+
+            auto res =  Handlers.at(method)(argsJson);
+
+            std::stringstream ss;
+            Json::StreamWriterBuilder writerBuilder;
+            writerBuilder["indentation"] = "  ";
+            std::unique_ptr<Json::StreamWriter> writer(writerBuilder.newStreamWriter());
+            writer->write(res, &ss);
+            Fixture.Emit() << "Response";
+            Fixture.Emit() << ss.str();
+        }
+
+        void Start() {}
+        void Stop() {}
+    };
 } // namespace
 
 class TRpcTest : public WBMQTT::Testing::TLoggedFixture
 {
 protected:
-    WBMQTT::Testing::PFakeMqttBroker Broker;
-    WBMQTT::Testing::PFakeMqttClient Client;
-
     std::string testRootDir;
     std::string schemaFile;
 
     void SetUp()
     {
-        Broker = WBMQTT::Testing::NewFakeMqttBroker(*this);
-        Client = Broker->MakeClient("dblogger_test");
-
         char* d = getenv("TEST_DIR_ABS");
         if (d != NULL) {
             testRootDir = d;
@@ -133,92 +176,37 @@ protected:
         testRootDir += "dblogger_test_data";
 
         schemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
-
-        Client->Start();
-    }
-
-    void TearDown()
-    {
-        Broker->Stop();
-        WBMQTT::Testing::TLoggedFixture::TearDown();
     }
 };
 
 TEST_F(TRpcTest, get_channels)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                          cache,
-                          std::make_unique<TFakeStorage>(*this),
-                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                          std::make_unique<TChannelWriter>(),
-                          std::chrono::seconds(5)));
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    Broker->Publish("test", {{"/rpc/v1/db_logger/history/get_channels/test", "{\"id\":1}", 0, true}});
-    Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels/test/reply").Wait();
-    logger->Stop();
-    t.join();
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_channels", "{\"id\":1}");
 }
 
 TEST_F(TRpcTest, get_records_v0)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                          cache,
-                          std::make_unique<TFakeStorage>(*this),
-                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                          std::make_unique<TChannelWriter>(),
-                          std::chrono::seconds(5)));
-    auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
-    auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    future2.Wait();
-    Broker->Publish("test",
-                    {{"/rpc/v1/db_logger/history/get_values/test",
-                      "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
-                      "\"ver\":0,\"timestamp\":{\"lt\":954566430}}}",
-                      0,
-                      true}});
-    Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values/test/reply").Wait();
-    logger->Stop();
-    t.join();
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":0,\"timestamp\":{\"lt\":954566430}}");
 }
 
 TEST_F(TRpcTest, get_records_v1)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                          cache,
-                          std::make_unique<TFakeStorage>(*this),
-                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                          std::make_unique<TChannelWriter>(),
-                          std::chrono::seconds(5)));
-    auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
-    auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    future2.Wait();
-    Broker->Publish("test",
-                    {{"/rpc/v1/db_logger/history/get_values/test",
-                      "{\"id\":1,\"params\":{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
-                      "\"ver\":1,\"timestamp\":{\"lt\":954566430}}}",
-                      0,
-                      true}});
-    Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values/test/reply").Wait();
-    logger->Stop();
-    t.join();
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}}");
 }
 
 TEST_F(TRpcTest, round)

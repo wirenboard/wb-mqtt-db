@@ -221,8 +221,8 @@ TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver                   driver,
       Storage(std::move(storage)),
       RpcServer(rpcServer),
       Active(false),
-      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout),
-      ChannelWriter(std::move(channelWriter))
+      ChannelWriter(std::move(channelWriter)),
+      RpcHandler(Cache, *Storage, getValuesRpcRequestTimeout)
 {
 
     Filter = std::make_shared<TControlFilter>();
@@ -274,12 +274,7 @@ void TMQTTDBLogger::Start()
     Driver->WaitForReady();
 
     RpcServer->Start();
-    RpcServer->RegisterMethod("history",
-                              "get_values",
-                              bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
-    RpcServer->RegisterMethod("history",
-                              "get_channels",
-                              bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
+    RpcHandler.Register(*RpcServer);
 
     for (auto& group : Cache.Groups) {
         group.LastUSaved = nextSaveTime;
@@ -472,6 +467,24 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point cu
     return next.Time;
 }
 
+TMQTTDBLoggerRpcHandler::TMQTTDBLoggerRpcHandler(const TLoggerCache&    cache,
+                                                 IStorage&              storage,
+                                                 std::chrono::seconds   getValuesRpcRequestTimeout)
+    : Cache(cache),
+      Storage(storage),
+      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
+{}
+
+void TMQTTDBLoggerRpcHandler::Register(TMqttRpcServer& rpcServer)
+{
+    rpcServer.RegisterMethod("history",
+                             "get_values",
+                             bind(&TMQTTDBLoggerRpcHandler::GetValues, this, placeholders::_1));
+    rpcServer.RegisterMethod("history",
+                             "get_channels",
+                             bind(&TMQTTDBLoggerRpcHandler::GetChannels, this, placeholders::_1));
+}
+
 class TJsonChannelsVisitor : public IChannelVisitor
 {
 public:
@@ -488,7 +501,7 @@ public:
     }
 };
 
-Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
+Json::Value TMQTTDBLoggerRpcHandler::GetChannels(const Json::Value& /*params*/)
 {
 #ifndef NBENCHMARK
     TBenchmark benchmark("RPC request took");
@@ -496,7 +509,7 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
 
     LOG(Debug) << "Run RPC get_channels()";
     TJsonChannelsVisitor visitor;
-    Storage->GetChannels(visitor);
+    Storage.GetChannels(visitor);
     return visitor.Root;
 }
 
@@ -571,7 +584,7 @@ bool TJsonRecordsVisitor::ProcessRecord(int                                   re
     return CommonProcessRecord(row, recordId, channel, timestamp, retain);
 }
 
-Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
+Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
 {
     LOG(Debug) << "Run RPC get_values()";
 
@@ -625,13 +638,13 @@ Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 
     try {
         // we request one extra row to know whether there are more than 'limit' available
-        Storage->GetRecords(visitor,
-                            channels,
-                            timestamp_gt,
-                            timestamp_lt,
-                            startingRecordId,
-                            rowLimit + 1,
-                            minInterval);
+        Storage.GetRecords(visitor,
+                           channels,
+                           timestamp_gt,
+                           timestamp_lt,
+                           startingRecordId,
+                           rowLimit + 1,
+                           minInterval);
     } catch (const std::exception& e) {
         LOG(Error) << e.what();
         throw;
