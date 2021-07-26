@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <time.h>
+#include <wblib/wbmqtt.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
 
@@ -11,13 +12,24 @@ namespace
     class TFakeStorage : public IStorage
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
-        int Id;
+        int                              Id;
+        PChannelInfo                     VinChannel;
+        PChannelInfo                     A1Channel;
     public:
-        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture), Id(0) {}
+        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture), Id(0)
+        {
+            VinChannel = CreateChannel({"wb-adc", "Vin"});
+            A1Channel  = CreateChannel({"wb-adc",  "A1"});
+        }
 
         PChannelInfo CreateChannel(const TChannelName& channelName) override
         {
             return CreateChannelPrivate(++Id, channelName.Device, channelName.Control);
+        }
+
+        void SetChannelPrecision(TChannelInfo& channelInfo, double precision)
+        {
+            SetPrecision(channelInfo, precision);
         }
 
         void GetRecords(IRecordsVisitor&                      visitor,
@@ -48,14 +60,12 @@ namespace
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
             visitor.ProcessRecord(1,
-                                  1,
-                                  {"wb-adc", "Vin"},
+                                  *VinChannel,
                                   "test1",
                                   std::chrono::system_clock::from_time_t(timegm(&dt)),
                                   false);
             visitor.ProcessRecord(2,
-                                  1,
-                                  {"wb-adc", "Vin"},
+                                  *VinChannel,
                                   10.0,
                                   std::chrono::system_clock::from_time_t(timegm(&dt)),
                                   20.0,
@@ -68,33 +78,33 @@ namespace
             tm dt;
             memset(&dt, 0, sizeof(tm));
 
-            auto p = CreateChannel({"wb-adc", "Vin"});
-            SetRecordCount(*p, 100);
+            SetRecordCount(*VinChannel, 100);
             dt.tm_year = 100;
             dt.tm_mon  = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
-            SetLastRecordTime(*p, std::chrono::system_clock::from_time_t(timegm(&dt)));
-            visitor.ProcessChannel(p);
+            SetLastRecordTime(*VinChannel, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            visitor.ProcessChannel(VinChannel);
 
-            p = CreateChannel({"wb-adc",  "A1"});
-            SetRecordCount(*p, 1000);
+            SetRecordCount(*A1Channel, 1000);
             dt.tm_year = 110;
             dt.tm_mon  = 4;
             dt.tm_mday = 2;
             dt.tm_hour = 11;
             dt.tm_min  = 21;
             dt.tm_sec  = 31;
-            SetLastRecordTime(*p, std::chrono::system_clock::from_time_t(timegm(&dt)));
-            visitor.ProcessChannel(p);
+            SetLastRecordTime(*A1Channel, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            visitor.ProcessChannel(A1Channel);
         }
 
-        void WriteChannel(TChannelInfo&                         channelInfo, 
-                          const TChannel&                       channelData,
-                          std::chrono::system_clock::time_point time,
-                          const std::string&                    groupName) {}
+        void WriteChannel(TChannelInfo&                         channelInfo,
+                          const std::string&                    value,
+                          const std::string&                    minimum,
+                          const std::string&                    maximum,
+                          bool                                  retained,
+                          std::chrono::system_clock::time_point time) {}
         void Commit() {}
         void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
         void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
@@ -112,7 +122,6 @@ protected:
 
     void SetUp()
     {
-        SetMode(E_Unordered);
         Broker = WBMQTT::Testing::NewFakeMqttBroker(*this);
         Client = Broker->MakeClient("dblogger_test");
 
@@ -127,16 +136,25 @@ protected:
 
         Client->Start();
     }
+
+    void TearDown()
+    {
+        Broker->Stop();
+        WBMQTT::Testing::TLoggedFixture::TearDown();
+    }
 };
 
 TEST_F(TRpcTest, get_channels)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
     std::thread t([=]() { logger->Start(); });
@@ -150,11 +168,14 @@ TEST_F(TRpcTest, get_channels)
 TEST_F(TRpcTest, get_records_v0)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
@@ -175,11 +196,14 @@ TEST_F(TRpcTest, get_records_v0)
 TEST_F(TRpcTest, get_records_v1)
 {
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    auto backend = WBMQTT::NewDriverBackend(Client);
+    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
     std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(Client,
+        new TMQTTDBLogger(driver,
                           cache,
                           std::make_unique<TFakeStorage>(*this),
                           WBMQTT::NewMqttRpcServer(Client, "db_logger"),
+                          std::make_unique<TChannelWriter>(),
                           std::chrono::seconds(5)));
     auto        future  = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values");
     auto        future2 = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
@@ -195,4 +219,26 @@ TEST_F(TRpcTest, get_records_v1)
     Broker->WaitForPublish("/rpc/v1/db_logger/history/get_values/test/reply").Wait();
     logger->Stop();
     t.join();
+}
+
+TEST_F(TRpcTest, round)
+{
+    TFakeStorage storage(*this);
+    auto channel = storage.CreateChannel({"wb-adc", "A2"});
+    TJsonRecordsVisitor visitor(1, 100, std::chrono::seconds(1));
+    visitor.ProcessRecord(1, *channel, "10.001", std::chrono::system_clock::time_point(), false);
+    storage.SetChannelPrecision(*channel, 1);
+    visitor.ProcessRecord(2, *channel, "10.001", std::chrono::system_clock::time_point(), false);
+    visitor.ProcessRecord(3, *channel, 10.001, std::chrono::system_clock::time_point(), 1.0, 20.0, false);
+    storage.SetChannelPrecision(*channel, 0.01);
+    visitor.ProcessRecord(4, *channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
+    storage.SetChannelPrecision(*channel, 0.0);
+    visitor.ProcessRecord(4, *channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
+
+    Json::StreamWriterBuilder writerBuilder;
+    writerBuilder["indentation"] = "  ";
+    std::unique_ptr<Json::StreamWriter> writer(writerBuilder.newStreamWriter());
+    std::stringstream ss;
+    writer->write(visitor.Root, &ss);
+    Emit() << ss.str();
 }

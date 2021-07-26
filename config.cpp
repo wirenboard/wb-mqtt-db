@@ -1,4 +1,5 @@
 #include "config.h"
+#include "log.h"
 
 #include <wblib/json_utils.h>
 
@@ -42,10 +43,12 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
         JSON::Get(groupItem, "min_unchanged_interval", group.UnchangedInterval);
 
         for (const auto& channelItem : groupItem["channels"]) {
-            // convert channel format from d/c to /devices/d/controls/c
             auto name_split = StringSplit(channelItem.asString(), '/');
-            group.MqttTopicPatterns.emplace_back("/devices/" + name_split[0] + "/controls/" +
-                                                 name_split[1]);
+            if (name_split.size() == 2) {
+                group.ControlPatterns.emplace_back(name_split[0], name_split[1]);
+            } else {
+                ::Warn.Log() << "[config] Bad channel: " << channelItem.asString();
+            }
         }
 
         config.Cache.Groups.push_back(group);

@@ -22,8 +22,7 @@ endif
 LDFLAGS=-lwbmqtt1 -lsqlite3
 
 ifeq ($(DEBUG), 1)
-	CXXFLAGS+=-ggdb -O0 -pg
-	LDFLAGS+=-pg
+	CXXFLAGS+=-O0 -g
 else
 	CXXFLAGS+=-Os -DNDEBUG
 endif
@@ -66,6 +65,7 @@ $(TEST_DIR)/$(TEST_BIN): $(OBJ) $(SQLITECPP_OBJ) $(TEST_OBJECTS)
 
 test: $(TEST_DIR)/$(TEST_BIN)
 	rm -f $(TEST_DIR)/*.dat.out
+ifneq ($(DEBUG), 1)
 	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
 		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
 		if [ $$? = 180 ]; then \
@@ -75,8 +75,10 @@ test: $(TEST_DIR)/$(TEST_BIN)
     else \
         $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
 	fi
+endif
 
-clean :
+clean:
+	-rm -f $(TEST_DIR)/*.dat.out
 	-rm -f *.o $(DB_BIN)
 	-rm -f $(SQLITECPP_DIR)/*.o
 	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)
@@ -86,7 +88,7 @@ install: all
 
 	install -D -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
 	install -D -m 0755  $(DB_CONFCONVERT) $(DESTDIR)/usr/bin/$(DB_CONFCONVERT)
-	install -D -m 0755  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
+	install -D -m 0644  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
 
 	install -D -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
 	install -D -m 0644  wb-mqtt-db.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json

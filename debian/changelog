@@ -1,3 +1,13 @@
+wb-mqtt-db (2.2.0) stable; urgency=medium
+
+  * Round average values according to control's /meta/precision.
+    If /meta/precision is not set, precision is calculated from most accurate 
+    controls's value.
+  * If control's value changes only once during interval, it is stored with
+    time of changing.
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Wed, 21 Jul 2021 16:16:24 +0500
+
 wb-mqtt-db (2.1.0) stable; urgency=medium
 
   * Data base structure is modified

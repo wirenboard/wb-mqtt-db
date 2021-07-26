@@ -7,6 +7,8 @@
 #include "sqlite_storage.h"
 
 #include <wblib/signal_handling.h>
+#include <wblib/wbmqtt.h>
+#include <wblib/rpc.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -19,10 +21,12 @@ namespace
     //! Maximun time to start application. Exceded timeout will case application termination.
     const auto DRIVER_INIT_TIMEOUT_S = chrono::seconds(30);
 
+    const auto APP_NAME = "wb-mqtt-db";
+
     void PrintUsage()
     {
         cout << "Usage:" << endl
-             << " wb-mqtt-db [options]" << endl
+             << " " << APP_NAME <<" [options]" << endl
              << "Options:" << endl
              << "  -d       level     enable debuging output:" << endl
              << "                       1 - db only;" << endl
@@ -129,7 +133,7 @@ namespace
 int main(int argc, char* argv[])
 {
     WBMQTT::TMosquittoMqttConfig mqttConfig;
-    mqttConfig.Id = "wb-mqtt-db";
+    mqttConfig.Id = APP_NAME;
 
     string configFileName("/etc/wb-mqtt-db.conf");
 
@@ -160,14 +164,17 @@ int main(int argc, char* argv[])
     WBMQTT::SignalHandling::Start();
 
     try {
-        TMQTTDBLoggerConfig config(
-            LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json"));
-        WBMQTT::PMqttClient            mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
+        auto config = LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json");
+        auto mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
+        auto backend = WBMQTT::NewDriverBackend(mqttClient);
+        auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId(APP_NAME).SetBackend(backend));
+        auto rpcServer = WBMQTT::NewMqttRpcServer(mqttClient, "db_logger");
         std::shared_ptr<TMQTTDBLogger> logger(
-            new TMQTTDBLogger(mqttClient,
+            new TMQTTDBLogger(driver,
                               config.Cache,
                               std::make_unique<TSqliteStorage>(config.DBFile),
-                              WBMQTT::NewMqttRpcServer(mqttClient, "db_logger"),
+                              rpcServer,
+                              std::make_unique<TChannelWriter>(),
                               config.GetValuesRpcRequestTimeout));
 
         WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [=] { logger->Stop(); });

@@ -16,8 +16,7 @@ namespace
         {}
 
         bool ProcessRecord(int                                   recordId,
-                           int                                   channelNameId,
-                           const TChannelName&                   channelName,
+                           const TChannelInfo&                   channel,
                            double                                averageValue,
                            std::chrono::system_clock::time_point timestamp,
                            double                                minValue,
@@ -25,7 +24,7 @@ namespace
                            bool                                  retain)
         {
             Fixture.Emit() << "Record id: " << recordId;
-            Fixture.Emit() << "\tChannel: " << channelName << "[" << channelNameId << "]";
+            Fixture.Emit() << "\tChannel: " << channel.GetName() << "[" << channel.GetId() << "]";
             Fixture.Emit() << "\tAverage: " << averageValue;
             Fixture.Emit() << "\tTime: "    << std::chrono::duration_cast<std::chrono::seconds>(timestamp - std::chrono::system_clock::time_point()).count();
             Fixture.Emit() << "\tMin: "     << minValue;
@@ -35,14 +34,13 @@ namespace
         }
 
         bool ProcessRecord(int                                   recordId,
-                           int                                   channelNameId,
-                           const TChannelName&                   channelName,
+                           const TChannelInfo&                   channel,
                            const std::string&                    value,
                            std::chrono::system_clock::time_point timestamp,
                            bool                                  retain)
         {
             Fixture.Emit() << "Record id: " << recordId;
-            Fixture.Emit() << "\tChannel: " << channelName << "[" << channelNameId << "]";
+            Fixture.Emit() << "\tChannel: " << channel.GetName() << "[" << channel.GetId() << "]";
             Fixture.Emit() << "\tValue: "   << value;
             Fixture.Emit() << "\tTime: "    << std::chrono::duration_cast<std::chrono::seconds>(timestamp - std::chrono::system_clock::time_point()).count();
             Fixture.Emit() << "\tRetain: "  << retain;
@@ -63,6 +61,7 @@ namespace
             Fixture.Emit() << "\tName: "      << channel->GetName();
             Fixture.Emit() << "\tCount: "     << channel->GetRecordCount();
             Fixture.Emit() << "\tLast time: " << std::chrono::duration_cast<std::chrono::seconds>(channel->GetLastRecordTime() - std::chrono::system_clock::time_point()).count();
+            Fixture.Emit() << "\tPrecision: " << channel->GetPrecision();
         }
     };
 }
@@ -82,19 +81,9 @@ TEST_F(TSqliteStorageTest, write)
     TChannelName channelName("wb-adc", "Vin");
     auto vin = storage.CreateChannel(channelName);
     std::chrono::system_clock::time_point time;
-    TChannel channelData;
-    channelData.LastValue = "10";
-    channelData.Retained = true;
 
-    storage.WriteChannel(*vin, channelData, time + std::chrono::seconds(50), "test");
-
-    channelData.Accumulator.Update("10");
-    channelData.Accumulator.Update("11");
-    channelData.Accumulator.Update("12");
-    channelData.LastValue = "12";
-    channelData.Retained = false;
-
-    storage.WriteChannel(*vin, channelData, time + std::chrono::seconds(100), "test");
+    storage.WriteChannel(*vin, "10", "",   "",   true,  time + std::chrono::seconds(50));
+    storage.WriteChannel(*vin, "11", "10", "12", false, time + std::chrono::seconds(100));
 
     TRecordsVisitor visitor(*this);
     storage.GetRecords(visitor, {channelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
@@ -109,9 +98,7 @@ TEST_F(TSqliteStorageTest, deleteRows)
     auto vin = storage.CreateChannel(channelName);
     std::chrono::system_clock::time_point time;
     for (size_t i = 1; i < 10; ++i) {
-        TChannel channelData;
-        channelData.LastValue = std::to_string(i);
-        storage.WriteChannel(*vin, channelData, time + std::chrono::seconds(i * 10), "test");
+        storage.WriteChannel(*vin, std::to_string(i), "", "", false, time + std::chrono::seconds(i * 10));
     }
     ASSERT_EQ(vin->GetRecordCount(), 9);
 
@@ -134,17 +121,13 @@ TEST_F(TSqliteStorageTest, deleteGroupRows)
     auto vin = storage.CreateChannel(vinChannelName);
     std::chrono::system_clock::time_point time;
     for (size_t i = 1; i < 10; ++i) {
-        TChannel channelData;
-        channelData.LastValue = std::to_string(i);
-        storage.WriteChannel(*vin, channelData, time + std::chrono::seconds(i * 10), "test");
+        storage.WriteChannel(*vin, std::to_string(i), "", "", false, time + std::chrono::seconds(i * 10));
     }
 
     TChannelName a1ChannelName("wb-adc", "A1");
     auto a1 = storage.CreateChannel(a1ChannelName);
     for (size_t i = 1; i < 10; ++i) {
-        TChannel channelData;
-        channelData.LastValue = std::to_string(i * 10);
-        storage.WriteChannel(*a1, channelData, time + std::chrono::seconds(i * 10 + 5), "test");
+        storage.WriteChannel(*a1, std::to_string(i * 10), "", "", false, time + std::chrono::seconds(i * 10 + 5));
     }
 
     TRecordsVisitor visitor(*this);
@@ -172,23 +155,30 @@ TEST_F(TSqliteStorageTest, loadOldValues)
 
     TChannelName vinChannelName("wb-adc", "Vin");
     auto vin = storage.CreateChannel(vinChannelName);
+    storage.SetChannelPrecision(*vin, 0.01);
     std::chrono::system_clock::time_point time;
     for (size_t i = 1; i < 10; ++i) {
-        TChannel channelData;
-        channelData.LastValue = std::to_string(i);
-        storage.WriteChannel(*vin, channelData, time + std::chrono::seconds(i * 10), "test");
+        storage.WriteChannel(*vin, std::to_string(i), "", "", false, time + std::chrono::seconds(i * 10));
     }
 
     TChannelName a1ChannelName("wb-adc", "A1");
     auto a1 = storage.CreateChannel(a1ChannelName);
     for (size_t i = 1; i < 10; ++i) {
-        TChannel channelData;
-        channelData.LastValue = std::to_string(i * 10);
-        storage.WriteChannel(*a1, channelData, time + std::chrono::seconds(i * 10 + 5), "test");
+        storage.WriteChannel(*a1, std::to_string(i * 10), "", "", false, time + std::chrono::seconds(i * 10 + 5));
     }
     storage.Commit();
 
     TSqliteStorage storage2("file::memory:?cache=shared");
     TChannelVisitor cv(*this);
     storage2.GetChannels(cv);
+}
+
+TEST_F(TSqliteStorageTest, precision)
+{
+    TSqliteStorage storage(":memory:");
+    auto vin = storage.CreateChannel({"wb-adc", "Vin"});
+    ASSERT_EQ(vin->GetPrecision(), 0.0);
+    storage.SetChannelPrecision(*vin, 0.01);
+    storage.Commit();
+    ASSERT_EQ(vin->GetPrecision(), 0.01);
 }

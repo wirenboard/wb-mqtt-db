@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 case "$1" in
 failed-upgrade)
     if [ -f /etc/wb-mqtt-db.conf.old ]; then

@@ -4,9 +4,12 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <mutex>
+#include <condition_variable>
 
 #include <wblib/mqtt.h>
 #include <wblib/rpc.h>
+#include <wblib/filters.h>
 
 class IStorage;
 
@@ -52,6 +55,7 @@ class TChannelInfo
     int                                   RecordCount;
     std::chrono::system_clock::time_point LastRecordTime;
     TChannelName                          Name;
+    double                                Precision;
 
     TChannelInfo(int64_t id, const std::string& device, const std::string& control);
 
@@ -62,6 +66,9 @@ public:
     int                                          GetRecordCount() const;
     const std::chrono::system_clock::time_point& GetLastRecordTime() const;
     int64_t                                      GetId() const;
+
+    //! Value's precision if channel stores numbers. 0.0 - no rounding
+    double GetPrecision() const;
 };
 
 typedef std::shared_ptr<TChannelInfo> PChannelInfo;
@@ -107,18 +114,45 @@ struct TChannel
     //! Channel's last save time
     std::chrono::steady_clock::time_point LastSaved;
 
+    //! Receive time of a last message from MQTT
+    std::chrono::system_clock::time_point LastDataTime;
+
     //! True if channel's LastValue has been modified since last save to storage
     bool Changed = false;
 
     bool Retained = false;
+
+    double Precision = 0.0;
 };
+
+struct TValueFromMqtt
+{
+    std::string                           Device;
+    std::string                           Control;
+    std::string                           Value;
+    std::string                           Type;
+    double                                Precision = 0.0;
+    std::chrono::system_clock::time_point Time;
+};
+
+/**
+ * @brief Update Precision of the channel according to message received from MQTT.
+ *        A value from /meta/precision is used if present.
+ *        If /meta/precision is missing and isNumber == true,
+ *        try to set precision according to value's fractional part.
+ * 
+ * @param channelData channel to update
+ * @param msg message from MQTT
+ * @param isNumber flag indicating that message contains number
+ */
+void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber);
 
 //! A group of channels with storage settings
 struct TLoggingGroup
 {
     typedef std::unordered_map<TChannelName, std::pair<PChannelInfo, TChannel>> TChannelsMap;
 
-    std::vector<std::string> MqttTopicPatterns;
+    std::vector<TChannelName> ControlPatterns;
 
     //! Maximum records in DB of a single channel in the group. Unlimited if 0
     int MaxChannelRecords = 0;
@@ -140,8 +174,8 @@ struct TLoggingGroup
     //! Unmodified values last saving time
     std::chrono::steady_clock::time_point LastUSaved;
 
-    //! Check if mqttTopic matches any of MqttTopicPatterns
-    bool MatchPatterns(const std::string& mqttTopic) const;
+    //! Check if device/control matches any of MqttTopicPatterns
+    bool MatchPatterns(const std::string& device, const std::string& control) const;
 
     TChannel& GetChannelData(const TChannelName& channelName);
 };
@@ -160,8 +194,7 @@ public:
     virtual ~IRecordsVisitor() = default;
 
     virtual bool ProcessRecord(int                                   recordId,
-                               int                                   channelNameId,
-                               const TChannelName&                   channelName,
+                               const TChannelInfo&                   channel,
                                double                                averageValue,
                                std::chrono::system_clock::time_point timestamp,
                                double                                minValue,
@@ -169,8 +202,7 @@ public:
                                bool                                  retain) = 0;
 
     virtual bool ProcessRecord(int                                   recordId,
-                               int                                   channelNameId,
-                               const TChannelName&                   channelName,
+                               const TChannelInfo&                   channel,
                                const std::string&                    value,
                                std::chrono::system_clock::time_point timestamp,
                                bool                                  retain) = 0;
@@ -195,12 +227,19 @@ public:
     virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
 
     /**
+     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     */
+    virtual void SetChannelPrecision(TChannelInfo& channelInfo, double precision) = 0;
+
+    /**
      * @brief Write channel data into storage. One must call Commit to finalaze writing.
      */
     virtual void WriteChannel(TChannelInfo&                         channelInfo,
-                              const TChannel&                       channel,
-                              std::chrono::system_clock::time_point time,
-                              const std::string&                    groupName) = 0;
+                              const std::string&                    value,
+                              const std::string&                    minimum,
+                              const std::string&                    maximum,
+                              bool                                  retained,
+                              std::chrono::system_clock::time_point time) = 0;
 
     /**
      * @brief Save all modifications
@@ -239,6 +278,7 @@ protected:
     PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
     void SetRecordCount(TChannelInfo& channel, int recordCount);
     void SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time);
+    void SetPrecision(TChannelInfo& channel, double precision);
     const std::unordered_map<TChannelName, PChannelInfo>& GetChannelsPrivate() const;
     PChannelInfo FindChannel(const TChannelName& channelName) const;
 
@@ -246,14 +286,48 @@ private:
     std::unordered_map<TChannelName, PChannelInfo> Channels;
 };
 
+class TControlFilter: public WBMQTT::TDeviceFilter
+{
+    std::vector<WBMQTT::TDeviceControlPair> Controls;
+public:
+    void addControlPatterns(const std::vector<TChannelName>& patterns);
+
+    std::vector<WBMQTT::TDeviceControlPair> Topics() const override;
+
+    bool MatchTopic(const std::string& topic) const override;
+};
+
+class IChannelWriter
+{
+public:
+    virtual ~IChannelWriter() = default;
+
+    virtual void WriteChannel(IStorage&                             storage, 
+                              TChannelInfo&                         channelInfo, 
+                              const TChannel&                       channelData,
+                              std::chrono::system_clock::time_point writeTime,
+                              const std::string&                    groupName) = 0;
+};
+
+class TChannelWriter: public IChannelWriter
+{
+public:
+    void WriteChannel(IStorage&                             storage, 
+                      TChannelInfo&                         channelInfo, 
+                      const TChannel&                       channelData,
+                      std::chrono::system_clock::time_point writeTime,
+                      const std::string&                    groupName) override;
+};
+
 class TMQTTDBLogger
 {
 public:
-    TMQTTDBLogger(WBMQTT::PMqttClient       mqttClient,
-                  const TLoggerCache&       cache,
-                  std::unique_ptr<IStorage> storage,
-                  WBMQTT::PMqttRpcServer    rpcServer,
-                  std::chrono::seconds      getValuesRpcRequestTimeout);
+    TMQTTDBLogger(WBMQTT::PDeviceDriver           driver,
+                  const TLoggerCache&             cache,
+                  std::unique_ptr<IStorage>       storage,
+                  WBMQTT::PMqttRpcServer          rpcServer,
+                  std::unique_ptr<IChannelWriter> channelWriter,
+                  std::chrono::seconds            getValuesRpcRequestTimeout);
 
     ~TMQTTDBLogger();
 
@@ -265,7 +339,7 @@ private:
     std::chrono::steady_clock::time_point ProcessTimer(
         std::chrono::steady_clock::time_point currentTime);
 
-    void ProcessMessages(std::queue<WBMQTT::TMqttMessage>& messages);
+    void ProcessMessages(std::queue<TValueFromMqtt>& messages);
 
     void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
     void CheckGroupOverflow(const TLoggingGroup& group);
@@ -273,15 +347,18 @@ private:
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    TLoggerCache                     Cache;
-    WBMQTT::PMqttClient              MqttClient;
-    std::unique_ptr<IStorage>        Storage;
-    WBMQTT::PMqttRpcServer           RpcServer;
-    std::mutex                       Mutex;
-    std::condition_variable          WakeupCondition;
-    bool                             Active;
-    std::queue<WBMQTT::TMqttMessage> MessagesQueue;
-    std::chrono::seconds             GetValuesRpcRequestTimeout;
+    TLoggerCache                      Cache;
+    WBMQTT::PDeviceDriver             Driver;
+    std::unique_ptr<IStorage>         Storage;
+    WBMQTT::PMqttRpcServer            RpcServer;
+    std::mutex                        Mutex;
+    std::condition_variable           WakeupCondition;
+    bool                              Active;
+    std::queue<TValueFromMqtt>        MessagesQueue;
+    std::chrono::seconds              GetValuesRpcRequestTimeout;
+    std::shared_ptr<TControlFilter>   Filter;
+    WBMQTT::PDriverEventHandlerHandle EventHandle;
+    std::unique_ptr<IChannelWriter>   ChannelWriter;
 };
 
 //! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of
@@ -307,4 +384,38 @@ public:
      * @brief Enables spend time calculation
      */
     void Enable();
+};
+
+class TJsonRecordsVisitor : public IRecordsVisitor
+{
+    int                                   ProtocolVersion;
+    int                                   RowLimit;
+    int                                   RowCount;
+    std::chrono::steady_clock::time_point StartTime;
+    std::chrono::steady_clock::duration   Timeout;
+
+    bool CommonProcessRecord(Json::Value&                          row,
+                             int                                   recordId,
+                             const TChannelInfo&                   channel,
+                             std::chrono::system_clock::time_point timestamp,
+                             bool                                  retain);
+
+public:
+    Json::Value Root;
+
+    TJsonRecordsVisitor(int protocolVersion, int rowLimit, std::chrono::steady_clock::duration timeout);
+
+    bool ProcessRecord(int                                   recordId,
+                       const TChannelInfo&                   channel,
+                       const std::string&                    value,
+                       std::chrono::system_clock::time_point timestamp,
+                       bool                                  retain) override;
+
+    bool ProcessRecord(int                                   recordId,
+                       const TChannelInfo&                   channel,
+                       double                                averageValue,
+                       std::chrono::system_clock::time_point timestamp,
+                       double                                minValue,
+                       double                                maxValue,
+                       bool                                  retain) override;
 };

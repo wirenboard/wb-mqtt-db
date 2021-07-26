@@ -2,9 +2,9 @@
 
 #include "log.h"
 
-#include <wblib/exceptions.h>
 #include <wblib/json_utils.h>
-#include <wblib/mqtt.h>
+#include <wblib/wbmqtt.h>
+#include <math.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -27,13 +27,39 @@ namespace
         void ProcessChannel(PChannelInfo channel) override
         {
             for (auto& group: Cache.Groups) {
-                std::string topic("/devices/" + channel->GetName().Device + "/controls/" + channel->GetName().Control);
-                if (group.MatchPatterns(topic)) {
+                if (group.MatchPatterns(channel->GetName().Device, channel->GetName().Control)) {
                     group.Channels[channel->GetName()].first = channel;
                 }
             }
         }
     };
+
+    bool MatchPattern(const std::string& devicePattern,
+                      const std::string& controlPattern, 
+                      const std::string& device,
+                      const std::string& control)
+    {
+        if (devicePattern == device || devicePattern == "+") {
+            return (controlPattern == control || controlPattern == "+");
+        }
+        return false;
+    }
+
+    bool MatchPattern(const TChannelName& pattern, const std::string& device, const std::string& control)
+    {
+        return MatchPattern(pattern.Device, pattern.Control, device, control);
+    }
+
+    bool MatchPattern(const WBMQTT::TDeviceControlPair& pattern, const std::string& device, const std::string& control)
+    {
+        return MatchPattern(pattern.DeviceId, pattern.ControlId, device, control);
+    }
+
+    std::string RoundValue(double val, double round_to)
+    {
+        double v = round_to > 0.0 ? std::round(val / round_to) * round_to : val;
+        return WBMQTT::StringFormat("%.15g", v);
+    }
 }
 
 namespace WBMQTT
@@ -68,6 +94,38 @@ namespace WBMQTT
     } // namespace JSON
 } // namespace WBMQTT
 
+void TControlFilter::addControlPatterns(const std::vector<TChannelName>& patterns)
+{
+    for (const auto& pattern: patterns) {
+        Controls.emplace_back(pattern.Device, pattern.Control);
+    }
+}
+
+std::vector<TDeviceControlPair> TControlFilter::Topics() const
+{
+    return Controls;
+}
+
+bool TControlFilter::MatchTopic(const std::string& topic) const
+{
+    // /devices/DEVICE/controls/CONTROL
+    auto components = StringSplit(topic, MQTT_PATH_DELIMITER);
+
+    if (components.size() < 5       ||
+        components[0] != ""         ||
+        components[1] != "devices"  ||
+        components[3] != "controls")
+    {
+        return false;
+    }
+    for (const auto& control: Controls) {
+        if (MatchPattern(control, components[2], components[4])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 TChannelName::TChannelName(const std::string& device, const std::string& control)
     : Device(device), Control(control)
 {
@@ -80,13 +138,12 @@ bool TChannelName::operator==(const TChannelName& rhs) const
 
 bool TAccumulator::Update(const string& payload)
 {
-    double value;
-
     // try to cast value to double and run stats
-    try {
-        value = stod(payload);
-    } catch (...) {
-        return false; // no processing for uncastable values
+    const char* str = payload.c_str();
+    char* end       = nullptr;
+    double value    = strtod(str, &end);
+    if (end == str || end != str + payload.length()) {
+        return false;
     }
 
     ++ValueCount;
@@ -120,10 +177,10 @@ double TAccumulator::Average() const
     return (ValueCount > 0 ? Sum / double(ValueCount) : 0.0); // 0.0 - error value
 }
 
-bool TLoggingGroup::MatchPatterns(const std::string& mqttTopic) const
+bool TLoggingGroup::MatchPatterns(const std::string& device, const std::string& control) const
 {
-    for (auto& pattern : MqttTopicPatterns) {
-        if (WBMQTT::TopicMatchesSub(pattern, mqttTopic)) {
+    for (const auto& pattern : ControlPatterns) {
+        if (MatchPattern(pattern, device, control)) {
             return true;
         }
     }
@@ -153,30 +210,25 @@ uint32_t GetRecordCount(const TLoggingGroup& group)
     return sum;
 }
 
-TMQTTDBLogger::TMQTTDBLogger(PMqttClient               mqttClient,
-                             const TLoggerCache&       cache,
-                             std::unique_ptr<IStorage> storage,
-                             PMqttRpcServer            rpcServer,
-                             std::chrono::seconds      getValuesRpcRequestTimeout)
-    : Cache(cache), MqttClient(mqttClient), Storage(std::move(storage)), RpcServer(rpcServer),
-      Active(false), GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
+TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver                   driver,
+                             const TLoggerCache&             cache,
+                             std::unique_ptr<IStorage>       storage,
+                             PMqttRpcServer                  rpcServer,
+                             std::unique_ptr<IChannelWriter> channelWriter,
+                             std::chrono::seconds            getValuesRpcRequestTimeout)
+    : Cache(cache), 
+      Driver(driver),
+      Storage(std::move(storage)),
+      RpcServer(rpcServer),
+      Active(false),
+      GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout),
+      ChannelWriter(std::move(channelWriter))
 {
-    std::vector<std::string> patterns;
 
-    for (auto& group : Cache.Groups) {
-        for (const auto& pattern : group.MqttTopicPatterns) {
-            patterns.push_back(pattern);
-        }
+    Filter = std::make_shared<TControlFilter>();
+    for (const auto& group: cache.Groups) {
+        Filter->addControlPatterns(group.ControlPatterns);
     }
-    MqttClient->Subscribe(
-        [&](const TMqttMessage& message) {
-            {
-                std::lock_guard<std::mutex> lg(Mutex);
-                MessagesQueue.push(message);
-            }
-            WakeupCondition.notify_all();
-        },
-        patterns);
 }
 
 TMQTTDBLogger::~TMQTTDBLogger()
@@ -204,6 +256,24 @@ void TMQTTDBLogger::Start()
 
     auto nextSaveTime = steady_clock::now();
 
+    EventHandle = Driver->On<TControlValueEvent>([&](const TControlValueEvent& event) {
+            {
+                std::lock_guard<std::mutex> lg(Mutex);
+                MessagesQueue.push({event.Control->GetDevice()->GetId(),
+                                    event.Control->GetId(),
+                                    event.RawValue,
+                                    event.Control->GetType(),
+                                    event.Control->GetPrecision(),
+                                    std::chrono::system_clock::now()});
+            }
+            WakeupCondition.notify_all();
+        });
+    Driver->StartLoop();
+    Driver->WaitForReady();
+    Driver->SetFilter(Filter);
+    Driver->WaitForReady();
+
+    RpcServer->Start();
     RpcServer->RegisterMethod("history",
                               "get_values",
                               bind(&TMQTTDBLogger::GetValues, this, placeholders::_1));
@@ -211,15 +281,13 @@ void TMQTTDBLogger::Start()
                               "get_channels",
                               bind(&TMQTTDBLogger::GetChannels, this, placeholders::_1));
 
-    MqttClient->Start();
-    RpcServer->Start();
     for (auto& group : Cache.Groups) {
         group.LastUSaved = nextSaveTime;
     }
 
     while (Active) {
         steady_clock::time_point currentTime;
-        queue<TMqttMessage>      localQueue;
+        queue<TValueFromMqtt>    localQueue;
         {
             std::unique_lock<std::mutex> lk(Mutex);
             if (MessagesQueue.empty()) {
@@ -245,36 +313,36 @@ void TMQTTDBLogger::Stop()
         }
         Active = false;
     }
+
+    Driver->RemoveEventHandler(EventHandle);
     WakeupCondition.notify_all();
     RpcServer->Stop();
-    MqttClient->Stop();
+    Driver->StopLoop();
 }
 
-void TMQTTDBLogger::ProcessMessages(queue<WBMQTT::TMqttMessage>& messages)
+void TMQTTDBLogger::ProcessMessages(queue<TValueFromMqtt>& messages)
 {
     while (!messages.empty()) {
         auto msg = messages.front();
-        if (!msg.Payload.empty()) {
+        if (!msg.Value.empty()) {
             for (auto& group : Cache.Groups) {
-                if (group.MatchPatterns(msg.Topic)) {
-                    auto items = WBMQTT::StringSplit(msg.Topic, "/");
-                    if (items.size() > 4) {
-                        auto& channelData = group.GetChannelData(TChannelName(items[2], items[4]));
+                if (group.MatchPatterns(msg.Device, msg.Control)) {
+                    auto& channelData = group.GetChannelData(TChannelName(msg.Device, msg.Control));
 
-                        const char* status = "is same";
-                        if (msg.Payload != channelData.LastValue) {
-                            status              = "IS CHANGED";
-                            channelData.Changed = true;
-                        }
-                        LOG(Debug) << "\"" << group.Name << "\" " << msg.Topic << ": \"" << msg.Payload
-                                << "\" " << status;
-
-                        channelData.Accumulator.Update(msg.Payload);
-
-                        channelData.LastValue          = msg.Payload;
-                        channelData.Retained           = msg.Retained;
-                        channelData.HasUnsavedMessages = true;
+                    const char* status = "is same";
+                    if (msg.Value != channelData.LastValue) {
+                        status              = "IS CHANGED";
+                        channelData.Changed = true;
                     }
+                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Device << "/" << msg.Control << ": \"" << msg.Value
+                              << "\" " << status;
+
+                    bool isNumber = channelData.Accumulator.Update(msg.Value);
+                    UpdatePrecision(channelData, msg, isNumber);
+                    channelData.LastValue          = msg.Value;
+                    channelData.LastDataTime       = msg.Time;
+                    channelData.Retained           = false;
+                    channelData.HasUnsavedMessages = true;
                     break;
                 }
             }
@@ -362,7 +430,7 @@ steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point cu
                 if (!channelInfo) {
                     channelInfo = Storage->CreateChannel(channelName);
                 }
-                Storage->WriteChannel(*channelInfo, channelData, writeTime, group.Name);
+                ChannelWriter->WriteChannel(*Storage, *channelInfo, channelData, writeTime, group.Name);
                 saved = true;
 
                 if (!channelData.Changed) {
@@ -432,92 +500,76 @@ Json::Value TMQTTDBLogger::GetChannels(const Json::Value& /*params*/)
     return visitor.Root;
 }
 
-class TJsonRecordsVisitor : public IRecordsVisitor
+TJsonRecordsVisitor::TJsonRecordsVisitor(int protocolVersion, int rowLimit, steady_clock::duration timeout)
+    : ProtocolVersion(protocolVersion), RowLimit(rowLimit), RowCount(0), Timeout(timeout)
 {
-    int                      ProtocolVersion;
-    int                      RowLimit;
-    int                      RowCount;
-    steady_clock::time_point StartTime;
-    steady_clock::duration   Timeout;
+    StartTime      = steady_clock::now();
+    Root["values"] = Json::Value(Json::arrayValue);
+}
 
-    bool CommonProcessRecord(Json::Value&                          row,
-                             int                                   recordId,
-                             int                                   channelNameId,
-                             const TChannelName&                   channelName,
-                             std::chrono::system_clock::time_point timestamp,
-                             bool                                  retain)
-    {
-        if (steady_clock::now() - StartTime >= Timeout) {
-            wb_throw(TRequestTimeoutException, "get_values");
-        }
 
-        if (RowLimit > 0 && RowCount >= RowLimit) {
-            Root["has_more"] = true;
-            return false;
-        }
-
-        if (ProtocolVersion == 1) {
-            row["i"] = recordId;
-            row["c"] = channelNameId;
-            row["t"] =
-                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
-        } else {
-            row["uid"]     = recordId;
-            row["device"]  = channelName.Device;
-            row["control"] = channelName.Control;
-            row["timestamp"] =
-                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
-        }
-
-        row["retain"] = retain;
-
-        // append element to values list
-        Root["values"].append(row);
-        ++RowCount;
-
-        return true;
+bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                          row,
+                                              int                                   recordId,
+                                              const TChannelInfo&                   channel,
+                                              std::chrono::system_clock::time_point timestamp,
+                                              bool                                  retain)
+{
+    if (steady_clock::now() - StartTime >= Timeout) {
+        wb_throw(TRequestTimeoutException, "get_values");
     }
 
-public:
-    Json::Value Root;
-
-    TJsonRecordsVisitor(int protocolVersion, int rowLimit, steady_clock::duration timeout)
-        : ProtocolVersion(protocolVersion), RowLimit(rowLimit), RowCount(0), Timeout(timeout)
-    {
-        StartTime      = steady_clock::now();
-        Root["values"] = Json::Value(Json::arrayValue);
+    if (RowLimit > 0 && RowCount >= RowLimit) {
+        Root["has_more"] = true;
+        return false;
     }
 
-    bool ProcessRecord(int                                   recordId,
-                       int                                   channelNameId,
-                       const TChannelName&                   channelName,
-                       const std::string&                    value,
-                       std::chrono::system_clock::time_point timestamp,
-                       bool                                  retain)
-    {
-        Json::Value row;
-        row[(ProtocolVersion == 1) ? "v" : "value"] = value;
-        return CommonProcessRecord(row, recordId, channelNameId, channelName, timestamp, retain);
+    if (ProtocolVersion == 1) {
+        row["i"] = recordId;
+        row["c"] = channel.GetId();
+        row["t"] =
+            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+    } else {
+        row["uid"]     = recordId;
+        row["device"]  = channel.GetName().Device;
+        row["control"] = channel.GetName().Control;
+        row["timestamp"] =
+            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
     }
 
-    bool ProcessRecord(int                                   recordId,
-                       int                                   channelNameId,
-                       const TChannelName&                   channelName,
-                       double                                averageValue,
-                       std::chrono::system_clock::time_point timestamp,
-                       double                                minValue,
-                       double                                maxValue,
-                       bool                                  retain)
-    {
-        Json::Value row;
+    row["retain"] = retain;
 
-        row["min"]                                  = minValue;
-        row["max"]                                  = maxValue;
-        row[(ProtocolVersion == 1) ? "v" : "value"] = averageValue;
+    // append element to values list
+    Root["values"].append(row);
+    ++RowCount;
 
-        return CommonProcessRecord(row, recordId, channelNameId, channelName, timestamp, retain);
-    }
-};
+    return true;
+}
+
+bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
+                    const TChannelInfo&                   channel,
+                    const std::string&                    value,
+                    std::chrono::system_clock::time_point timestamp,
+                    bool                                  retain)
+{
+    Json::Value row;
+    row[(ProtocolVersion == 1) ? "v" : "value"] = value;
+    return CommonProcessRecord(row, recordId, channel, timestamp, retain);
+}
+
+bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
+                    const TChannelInfo&                   channel,
+                    double                                averageValue,
+                    std::chrono::system_clock::time_point timestamp,
+                    double                                minValue,
+                    double                                maxValue,
+                    bool                                  retain)
+{
+    Json::Value row;
+    row["min"]                                  = RoundValue(minValue, channel.GetPrecision());
+    row["max"]                                  = RoundValue(maxValue, channel.GetPrecision());
+    row[(ProtocolVersion == 1) ? "v" : "value"] = RoundValue(averageValue, channel.GetPrecision());
+    return CommonProcessRecord(row, recordId, channel, timestamp, retain);
+}
 
 Json::Value TMQTTDBLogger::GetValues(const Json::Value& params)
 {
@@ -606,7 +658,7 @@ void TBenchmark::Enable()
 }
 
 TChannelInfo::TChannelInfo(int64_t id, const std::string& device, const std::string& control)
-    : Id(id), RecordCount(0), Name(device, control)
+    : Id(id), RecordCount(0), Name(device, control), Precision(0.0)
 {}
 
 const TChannelName& TChannelInfo::GetName() const
@@ -629,6 +681,11 @@ int64_t TChannelInfo::GetId() const
     return Id;
 }
 
+double TChannelInfo::GetPrecision() const
+{
+    return Precision;
+}
+
 PChannelInfo IStorage::CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control)
 {
     PChannelInfo p(new TChannelInfo(id, device, control));
@@ -646,6 +703,11 @@ void IStorage::SetLastRecordTime(TChannelInfo& channel, const std::chrono::syste
     channel.LastRecordTime = time;
 }
 
+void IStorage::SetPrecision(TChannelInfo& channel, double precision)
+{
+    channel.Precision = precision;
+}
+
 const std::unordered_map<TChannelName, PChannelInfo>& IStorage::GetChannelsPrivate() const
 {
     return Channels;
@@ -658,4 +720,54 @@ PChannelInfo IStorage::FindChannel(const TChannelName& channelName) const
         return it->second;
     }
     return PChannelInfo();
+}
+
+void TChannelWriter::WriteChannel(IStorage&                storage, 
+                                  TChannelInfo&            channelInfo, 
+                                  const TChannel&          channelData,
+                                  system_clock::time_point writeTime,
+                                  const std::string&       groupName)
+{
+    if (channelData.Accumulator.HasValues()) {
+        storage.WriteChannel(channelInfo, 
+                             WBMQTT::FormatFloat(channelData.Accumulator.Average()),
+                             WBMQTT::FormatFloat(channelData.Accumulator.Min),
+                             WBMQTT::FormatFloat(channelData.Accumulator.Max),
+                             channelData.Retained,
+                             writeTime);
+    } else {
+        // For single values set time to receive time not to write time
+        writeTime = (channelData.Changed ? channelData.LastDataTime : writeTime);
+        storage.WriteChannel(channelInfo, 
+                            channelData.LastValue,
+                            std::string(),
+                            std::string(),
+                            channelData.Retained,
+                            writeTime);
+    }
+    storage.SetChannelPrecision(channelInfo, channelData.Precision);
+}
+
+void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber)
+{
+    // Control has /meta/precision
+    if (msg.Precision != 0.0) {
+        channelData.Precision = msg.Precision;
+        return;
+    }
+    if (!isNumber) {
+        return;
+    }
+    // try to get precision from value
+    double precision = 1.0;
+    auto pos = msg.Value.find(".");
+    if (pos != std::string::npos) {
+        ++pos;
+        for (; pos != msg.Value.length(); ++pos) {
+            precision /= 10;
+        }
+    }
+    if ((channelData.Precision == 0.0) || (channelData.Precision > precision)) {
+        channelData.Precision = precision;
+    }
 }

@@ -6,11 +6,13 @@ Standards-Version: 3.9.2
 Build-Depends: debhelper (>= 10), 
                pkg-config, 
                libsqlite3-dev, 
-               libwbmqtt1-2-dev (>= 2.2.4),
-               libwbmqtt1-2-test-utils (>= 2.2.4)
+               libwbmqtt1-2-dev (>= 2.4.0),
+               libwbmqtt1-2-test-utils (>= 2.4.0)
 
 Package: wb-mqtt-db
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libwbmqtt1-2 (>= 2.2.4), libsqlite3-0
+Depends: ${shlibs:Depends}, ${misc:Depends}, libwbmqtt1-2 (>= 2.4.0), libsqlite3-0, python (>= 2.7)
 Breaks: wb-mqtt-confed (<< 1.0.2)
 Description: Wiren Board database logger
+ wb-mqtt-db is a service which stores values from MQTT controls in data base.
+ It offers MQTT RPC for retrieving stored data.
