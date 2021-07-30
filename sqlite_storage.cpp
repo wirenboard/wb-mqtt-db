@@ -47,6 +47,43 @@ namespace
         }
         return res.str();
     }
+
+    bool isNumber(const std::string& str)
+    {
+        const char* s = str.c_str();
+        char* end     = nullptr;
+        strtod(s, &end);
+        return (end != s && end == s + str.length());
+    }
+
+    bool CallVisitor(IRecordsVisitor& visitor, SQLite::Statement& query, bool withAverage, const TChannelInfo& channel)
+    {
+        int  recordId = query.getColumn(0).getInt();
+        bool retain   = (query.getColumn(6).getInt() > 0);
+        system_clock::time_point timestamp(milliseconds(query.getColumn(3).getInt64()));
+
+        if (withAverage && !isNumber(query.getColumn(7).getString())) {
+            return visitor.ProcessRecord(recordId,
+                                         channel,
+                                         query.getColumn(7).getString(),
+                                         timestamp,
+                                         retain);
+        }
+        if (query.getColumn(5).isNull()) {
+            return visitor.ProcessRecord(recordId,
+                                         channel,
+                                         query.getColumn(2).getString(),
+                                         timestamp,
+                                         retain);
+        }
+        return visitor.ProcessRecord(recordId,
+                                     channel,
+                                     query.getColumn(2).getDouble(),
+                                     timestamp,
+                                     query.getColumn(4).getDouble(),
+                                     query.getColumn(5).getDouble(),
+                                     retain);
+    }
 } // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
@@ -337,12 +374,15 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     // version 3.7 can't always figure out to use the proper index
     string queryStr;
 
-    if (minInterval.count() > 0)
-        queryStr = "SELECT uid, channel, AVG(value), timestamp, MIN(min), MAX(max), retained \
+    bool withAverage = true;
+    if (minInterval.count() > 0) {
+        queryStr = "SELECT uid, channel, AVG(value), timestamp, MIN(min), MAX(max), retained, value \
                     FROM data INDEXED BY data_topic_timestamp WHERE ";
-    else
+    } else {
+        withAverage = false;
         queryStr = "SELECT uid, channel, value, timestamp, min, max, retained \
                     FROM data INDEXED BY data_topic_timestamp WHERE ";
+    }
 
     if (!channels.empty()) {
         queryStr += "channel IN ( ";
@@ -389,30 +429,9 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     query.bind(++param_num, maxRecords);
 
     while (query.executeStep()) {
-        int  recordId = query.getColumn(0).getInt();
-        bool retain   = (query.getColumn(6).getInt() > 0);
-
         int channelId(query.getColumn(1).getInt());
-
-        system_clock::time_point timestamp(milliseconds(query.getColumn(3).getInt64()));
-
-        if (!query.getColumn(5).isNull()) {
-            if (!visitor.ProcessRecord(recordId,
-                                       *channelIdToNameMap[channelId],
-                                       query.getColumn(2).getDouble(),
-                                       timestamp,
-                                       query.getColumn(4).getDouble(),
-                                       query.getColumn(5).getDouble(),
-                                       retain))
-                return;
-
-        } else {
-            if (!visitor.ProcessRecord(recordId,
-                                       *channelIdToNameMap[channelId],
-                                       query.getColumn(2).getString(),
-                                       timestamp,
-                                       retain))
-                return;
+        if (!CallVisitor(visitor, query, withAverage, *channelIdToNameMap[channelId])) {
+            return;
         }
     }
 }

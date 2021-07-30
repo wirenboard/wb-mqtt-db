@@ -209,7 +209,7 @@ namespace
                 "FROM data_old");
 
         // add precision column to channel
-        db.exec("ALTER TABLE channel ADD COLUMN precision REAL");
+        db.exec("ALTER TABLE channels ADD COLUMN precision REAL");
 
         // drop old data table
         db.exec("DROP TABLE data_old");

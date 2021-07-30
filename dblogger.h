@@ -319,6 +319,24 @@ public:
                       const std::string&                    groupName) override;
 };
 
+class TMQTTDBLoggerRpcHandler
+{
+public:
+    TMQTTDBLoggerRpcHandler(const TLoggerCache&    cache,
+                            IStorage&              storage,
+                            std::chrono::seconds   getValuesRpcRequestTimeout);
+
+    void Register(WBMQTT::TMqttRpcServer& rpcServer);
+
+private:
+    Json::Value GetChannels(const Json::Value& params);
+    Json::Value GetValues(const Json::Value& params);
+
+    const TLoggerCache&    Cache;
+    IStorage&              Storage;
+    std::chrono::seconds   GetValuesRpcRequestTimeout;
+};
+
 class TMQTTDBLogger
 {
 public:
@@ -344,9 +362,6 @@ private:
     void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
     void CheckGroupOverflow(const TLoggingGroup& group);
 
-    Json::Value GetChannels(const Json::Value& params);
-    Json::Value GetValues(const Json::Value& params);
-
     TLoggerCache                      Cache;
     WBMQTT::PDeviceDriver             Driver;
     std::unique_ptr<IStorage>         Storage;
@@ -355,10 +370,10 @@ private:
     std::condition_variable           WakeupCondition;
     bool                              Active;
     std::queue<TValueFromMqtt>        MessagesQueue;
-    std::chrono::seconds              GetValuesRpcRequestTimeout;
     std::shared_ptr<TControlFilter>   Filter;
     WBMQTT::PDriverEventHandlerHandle EventHandle;
     std::unique_ptr<IChannelWriter>   ChannelWriter;
+    TMQTTDBLoggerRpcHandler           RpcHandler;
 };
 
 //! RAII-style spend time benchmark. Calculates time period between construction a nd destruction of
