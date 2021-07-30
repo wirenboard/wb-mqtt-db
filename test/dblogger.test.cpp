@@ -6,6 +6,8 @@
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
 
+using namespace std::chrono;
+
 namespace
 {
     class TFakeStorage : public IStorage
@@ -75,25 +77,25 @@ namespace
 
     class TFakeChannelWriter: public IChannelWriter
     {
-        WBMQTT::Testing::TLoggedFixture&      Fixture;
-        std::chrono::steady_clock::time_point StartTime;
-        std::unique_ptr<TChannelWriter>       ChannelWriter;
+        WBMQTT::Testing::TLoggedFixture& Fixture;
+        system_clock::time_point         StartTime;
+        std::unique_ptr<TChannelWriter>  ChannelWriter;
     public:
-        TFakeChannelWriter(WBMQTT::Testing::TLoggedFixture& fixture)
+        TFakeChannelWriter(WBMQTT::Testing::TLoggedFixture& fixture,
+                           system_clock::time_point         startTime)
             : Fixture(fixture),
-              StartTime(std::chrono::steady_clock::now()),
+              StartTime(startTime),
               ChannelWriter(std::make_unique<TChannelWriter>())
         {}
 
-        void WriteChannel(IStorage&                             storage, 
-                          TChannelInfo&                         channelInfo, 
-                          const TChannel&                       channelData,
-                          std::chrono::system_clock::time_point writeTime,
-                          const std::string&                    groupName) override
+        void WriteChannel(IStorage&                storage, 
+                          TChannelInfo&            channelInfo, 
+                          const TChannel&          channelData,
+                          system_clock::time_point writeTime,
+                          const std::string&       groupName) override
         {
-            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-            Fixture.Emit() << std::chrono::duration_cast<std::chrono::seconds>(now - StartTime).count();
-            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName();
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName()
+                           << " " << duration_cast<milliseconds>(writeTime - StartTime).count();
             Fixture.Emit() << "  Last value: " << channelData.LastValue;
             Fixture.Emit() << "  Changed: " << channelData.Changed;
             Fixture.Emit() << "  Accumulator value count: " << channelData.Accumulator.ValueCount;
@@ -105,120 +107,351 @@ namespace
 class TDBLoggerTest : public WBMQTT::Testing::TLoggedFixture
 {
 protected:
-    WBMQTT::Testing::PFakeMqttBroker Broker;
-    WBMQTT::Testing::PFakeMqttClient Client;
-
-    std::string testRootDir;
-    std::string schemaFile;
-
-    void SetUp()
+    void StoreByTimeout(system_clock::time_point&    systemTime,
+                        steady_clock::time_point&    steadyTime,
+                        steady_clock::time_point&    startSteadyTime,
+                        steady_clock::time_point&    nextSaveTime,
+                        const milliseconds&          expectedNextSaveTime,
+                        TMqttDbLoggerMessageHandler& handler)
     {
-        Broker = WBMQTT::Testing::NewFakeMqttBroker(*this);
-        Client = Broker->MakeClient("dblogger_test");
+        systemTime += nextSaveTime - steadyTime;
+        steadyTime = nextSaveTime;
+        Emit() << "Store by timeout " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
+        nextSaveTime = handler.Store(steadyTime, systemTime);
+        ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
+    }
 
-        char* d = getenv("TEST_DIR_ABS");
-        if (d != NULL) {
-            testRootDir = d;
-            testRootDir += '/';
-        }
-        testRootDir += "dblogger_test_data";
-
-        schemaFile = testRootDir + "/../../wb-mqtt-db.schema.json";
-
-        Client->Start();
+    void StoreByMessage(const system_clock::time_point& systemTime,
+                        const steady_clock::time_point& steadyTime,
+                        const steady_clock::time_point& startSteadyTime,
+                        steady_clock::time_point&       nextSaveTime,
+                        const milliseconds&             expectedNextSaveTime,
+                        TMqttDbLoggerMessageHandler&    handler)
+    {
+        Emit() << "Store by message " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
+        nextSaveTime = handler.Store(steadyTime, systemTime);
+        ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
     }
 };
 
 TEST_F(TDBLoggerTest, two_groups)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db2.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                          cache,
-                          std::make_unique<TFakeStorage>(*this),
-                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                          std::make_unique<TFakeChannelWriter>(*this),
-                          std::chrono::seconds(5)));
+    TLoggerCache cache;
 
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "2.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "3.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::seconds(8));
-    logger->Stop();
-    t.join();
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.ControlPatterns.push_back({"wb-adc", "Vin"});
+    group.Name = "most specific";
+    cache.Groups.push_back(group);
+
+    group.ChangedInterval   = seconds(3);
+    group.UnchangedInterval = seconds(4);
+    group.ControlPatterns.push_back({"wb-adc", "A1"});
+    group.Name = "most specific2";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime      = system_clock::now();
+    auto steadyTime      = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto startSystemTime = systemTime;
+    auto nextSaveTime    = steadyTime;
+
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+
+    // steadyTime: 0 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    handler.Start(startSteadyTime);
+    std::queue<TValueFromMqtt> messages;
+    messages.push({"wb-adc", "Vin", "12.000", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 0 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 0 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(100);
+    steadyTime += milliseconds(100);
+    messages.push({"wb-adc", "A1", "2.000", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 100 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 0 ms
+    // A1: last save = 100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    messages.push({"wb-adc", "Vin", "13.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "3.000",  "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 1100 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific: next save by ChangedInterval = 2000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // most specific2: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 0 ms
+    // A1: last save = 100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+
+    // steadyTime: 2000 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // most specific2: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    // steadyTime: 3000 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // most specific2: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3100), handler);
+
+    // steadyTime: 3100 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+
+    // The values are the same
+    systemTime = startSystemTime + milliseconds(3500);
+    steadyTime = startSteadyTime + milliseconds(3500);
+    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 3500 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // most specific2: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 3100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+
+    // steadyTime: 4000 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // most specific2: next save by UnchangedInterval = 8000 ms
+    // Vin: last save = 4000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+
+    // steadyTime: 6000 ms
+    // most specific: next save by UnchangedInterval = 9000 ms
+    // most specific2: next save by UnchangedInterval = 8000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(8000), handler);
+
+    // steadyTime: 8000 ms
+    // most specific: next save by UnchangedInterval = 9000 ms
+    // most specific2: next save by UnchangedInterval = 12000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(9000), handler);
+
+    // steadyTime: 9000 ms
+    // most specific: next save by UnchangedInterval = 12000 ms
+    // most specific2: next save by UnchangedInterval = 12000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(12000), handler);
+
+    // steadyTime: 12000 ms
+    // most specific: next save by UnchangedInterval = 15000 ms
+    // most specific2: next save by UnchangedInterval = 16000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(15000), handler);
 }
 
 TEST_F(TDBLoggerTest, two_overlapping_groups)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db3.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                          cache,
-                          std::make_unique<TFakeStorage>(*this),
-                          WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                          std::make_unique<TFakeChannelWriter>(*this),
-                          std::chrono::seconds(5)));
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "2.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "13.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "3.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "14.000", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "4.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::seconds(8));
-    logger->Stop();
-    t.join();
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.ControlPatterns.push_back({"wb-adc", "Vin"});
+    group.Name = "most specific";
+    cache.Groups.push_back(group);
+
+    group.ChangedInterval   = seconds(3);
+    group.UnchangedInterval = seconds(4);
+    group.ControlPatterns.push_back({"wb-adc", "+"});
+    group.Name = "general";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime      = system_clock::now();
+    auto steadyTime      = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto startSystemTime = systemTime;
+    auto nextSaveTime    = steadyTime;
+
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+
+    // steadyTime: 0 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    handler.Start(startSteadyTime);
+    std::queue<TValueFromMqtt> messages;
+    messages.push({"wb-adc", "Vin", "12.000", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 0 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 0 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(100);
+    steadyTime += milliseconds(100);
+    messages.push({"wb-adc", "A1", "2.000", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 100 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 0 ms
+    // A1: last save = 100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    messages.push({"wb-adc", "Vin", "13.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "3.000",  "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 1100 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // most specific: next save by ChangedInterval = 2000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // general: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 0 ms
+    // A1: last save = 100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+
+    // steadyTime: 2000 ms
+    // most specific: next save by UnchangedInterval = 3000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // general: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    // steadyTime: 3000 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // general: next save by ChangedInterval = 3100 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3100), handler);
+
+    // steadyTime: 3100 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+
+    // The values are the same
+    systemTime = startSystemTime + milliseconds(3500);
+    steadyTime = startSteadyTime + milliseconds(3500);
+    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
+    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    // steadyTime: 3500 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // general: next save by UnchangedInterval = 4000 ms
+    // Vin: last save = 2000 ms
+    // A1: last save = 3100 ms
+    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+
+    // steadyTime: 4000 ms
+    // most specific: next save by UnchangedInterval = 6000 ms
+    // general: next save by UnchangedInterval = 8000 ms
+    // Vin: last save = 4000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+
+    // steadyTime: 6000 ms
+    // most specific: next save by UnchangedInterval = 9000 ms
+    // general: next save by UnchangedInterval = 8000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 3100 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(8000), handler);
+
+    // steadyTime: 8000 ms
+    // most specific: next save by UnchangedInterval = 9000 ms
+    // general: next save by UnchangedInterval = 12000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(9000), handler);
+
+    // steadyTime: 9000 ms
+    // most specific: next save by UnchangedInterval = 12000 ms
+    // general: next save by UnchangedInterval = 12000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(12000), handler);
+
+    // steadyTime: 12000 ms
+    // most specific: next save by UnchangedInterval = 15000 ms
+    // general: next save by UnchangedInterval = 16000 ms
+    // Vin: last save = 6000 ms
+    // A1: last save = 8000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(15000), handler);
 }
 
 TEST_F(TDBLoggerTest, save_precision)
 {
-    TLoggerCache cache(LoadConfig(testRootDir + "/save_precision.conf", schemaFile).Cache);
-    auto backend = WBMQTT::NewDriverBackend(Client);
-    auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId("test").SetBackend(backend));
+    TLoggerCache cache;
 
-    std::shared_ptr<TMQTTDBLogger> logger(
-        new TMQTTDBLogger(driver,
-                        cache,
-                        std::make_unique<TFakeStorage>(*this),
-                        WBMQTT::NewMqttRpcServer(Client, "db_logger"),
-                        std::make_unique<TChannelWriter>(),
-                        std::chrono::seconds(5)));
-    auto        future = Broker->WaitForPublish("/rpc/v1/db_logger/history/get_channels");
-    std::thread t([=]() { logger->Start(); });
-    future.Wait();
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin/meta/precision", "0.1", 1, true}});
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.000", 1, true}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/Vin", "12.001", 1, false}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "13", 1, false}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    Broker->Publish("test", {{"/devices/wb-adc/controls/A1", "14.001", 1, false}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    logger->Stop();
-    t.join();
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(0);
+    group.UnchangedInterval = seconds(0);
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TChannelWriter>());
+
+    auto systemTime = system_clock::time_point();
+    auto steadyTime = steady_clock::now();
+
+    auto timeStep = milliseconds(100);
+    handler.Start(steadyTime);
+    std::queue<TValueFromMqtt> messages;
+    messages.push({"wb-adc", "Vin", "12.000", "", 0.1, systemTime});
+    handler.ProcessMessages(messages);
+    handler.Store(steadyTime, systemTime);
+    steadyTime += timeStep;
+    systemTime += timeStep;
+    messages.push({"wb-adc", "Vin", "12.001", "", 0.1, systemTime});
+    handler.ProcessMessages(messages);
+    handler.Store(steadyTime, systemTime);
+    steadyTime += timeStep;
+    systemTime += timeStep;
+    messages.push({"wb-adc", "A1", "13", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    handler.Store(steadyTime, systemTime);
+    steadyTime += timeStep;
+    systemTime += timeStep;
+    messages.push({"wb-adc", "A1", "14.001", "", 0.0, systemTime});
+    handler.ProcessMessages(messages);
+    handler.Store(steadyTime, systemTime);
+    steadyTime += timeStep;
+    systemTime += timeStep;
 }
 
 TEST(TPrecisionTest, find_precision)
