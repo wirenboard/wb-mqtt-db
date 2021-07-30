@@ -1,3 +1,12 @@
+wb-mqtt-db (2.4.0) stable; urgency=medium
+
+  * max_burst parameter is added to config.
+    It sets maximum extraordinary records number. 
+    Extraordinary records can be saved after a long period without messages from MQTT.
+    For each such period equal to min_interval parameter one extraordinary record could be saved. 
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Thu, 29 Jul 2021 14:51:53 +0500
+
 wb-mqtt-db (2.3.0) stable; urgency=medium
 
   * Text values are not averaged

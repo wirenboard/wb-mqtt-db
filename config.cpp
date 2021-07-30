@@ -41,6 +41,7 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
         JSON::Get(groupItem, "values_total", group.MaxRecords);
         JSON::Get(groupItem, "min_interval", group.ChangedInterval);
         JSON::Get(groupItem, "min_unchanged_interval", group.UnchangedInterval);
+        JSON::Get(groupItem, "max_burst", group.MaxBurstRecords);
 
         for (const auto& channelItem : groupItem["channels"]) {
             auto name_split = StringSplit(channelItem.asString(), '/');

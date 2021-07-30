@@ -89,17 +89,16 @@ namespace
         {}
 
         void WriteChannel(IStorage&                storage, 
-                          TChannelInfo&            channelInfo, 
-                          const TChannel&          channelData,
+                          TChannel&                channel,
                           system_clock::time_point writeTime,
                           const std::string&       groupName) override
         {
-            Fixture.Emit() << "Write \"" << groupName << "\" " << channelInfo.GetName()
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channel.ChannelInfo->GetName()
                            << " " << duration_cast<milliseconds>(writeTime - StartTime).count();
-            Fixture.Emit() << "  Last value: " << channelData.LastValue;
-            Fixture.Emit() << "  Changed: " << channelData.Changed;
-            Fixture.Emit() << "  Accumulator value count: " << channelData.Accumulator.ValueCount;
-            ChannelWriter->WriteChannel(storage, channelInfo, channelData, writeTime, groupName);
+            Fixture.Emit() << "  Last value: " << channel.LastValue;
+            Fixture.Emit() << "  Changed: " << channel.Changed;
+            Fixture.Emit() << "  Accumulator value count: " << channel.Accumulator.ValueCount;
+            ChannelWriter->WriteChannel(storage, channel, writeTime, groupName);
         }
     };
 } // namespace
@@ -117,19 +116,31 @@ protected:
         systemTime += nextSaveTime - steadyTime;
         steadyTime = nextSaveTime;
         Emit() << "Store by timeout " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
-        nextSaveTime = handler.Store(steadyTime, systemTime);
+        std::queue<TValueFromMqtt> messages;
+        nextSaveTime = handler.HandleMessages(messages, steadyTime, systemTime);
         ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
     }
 
-    void StoreByMessage(const system_clock::time_point& systemTime,
+    void StoreByMessage(std::queue<TValueFromMqtt>&     messages,
+                        const system_clock::time_point& systemTime,
+                        const steady_clock::time_point& steadyTime,
+                        const steady_clock::time_point& startSteadyTime,
+                        steady_clock::time_point&       nextSaveTime,
+                        TMqttDbLoggerMessageHandler&    handler)
+    {
+        Emit() << "Store by message " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
+        nextSaveTime = handler.HandleMessages(messages, steadyTime, systemTime);
+    }
+
+    void StoreByMessage(std::queue<TValueFromMqtt>&     messages,
+                        const system_clock::time_point& systemTime,
                         const steady_clock::time_point& steadyTime,
                         const steady_clock::time_point& startSteadyTime,
                         steady_clock::time_point&       nextSaveTime,
                         const milliseconds&             expectedNextSaveTime,
                         TMqttDbLoggerMessageHandler&    handler)
     {
-        Emit() << "Store by message " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
-        nextSaveTime = handler.Store(steadyTime, systemTime);
+        StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
         ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
     }
 };
@@ -166,32 +177,29 @@ TEST_F(TDBLoggerTest, two_groups)
     // most specific2: next save by UnchangedInterval = 4000 ms
     handler.Start(startSteadyTime);
     std::queue<TValueFromMqtt> messages;
-    messages.push({"wb-adc", "Vin", "12.000", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
     // steadyTime: 0 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific2: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 0 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
 
     systemTime += milliseconds(100);
     steadyTime += milliseconds(100);
-    messages.push({"wb-adc", "A1", "2.000", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "A1"}, "2.000", "", 0.0, systemTime});
     // steadyTime: 100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific2: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 0 ms
     // A1: last save = 100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
 
     systemTime += milliseconds(1000);
     steadyTime += milliseconds(1000);
-    messages.push({"wb-adc", "Vin", "13.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "3.000",  "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "3.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
     // steadyTime: 1100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific: next save by ChangedInterval = 2000 ms
@@ -199,7 +207,7 @@ TEST_F(TDBLoggerTest, two_groups)
     // most specific2: next save by ChangedInterval = 3100 ms
     // Vin: last save = 0 ms
     // A1: last save = 100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
 
     // steadyTime: 2000 ms
     // most specific: next save by UnchangedInterval = 3000 ms
@@ -227,15 +235,14 @@ TEST_F(TDBLoggerTest, two_groups)
     // The values are the same
     systemTime = startSystemTime + milliseconds(3500);
     steadyTime = startSteadyTime + milliseconds(3500);
-    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
     // steadyTime: 3500 ms
     // most specific: next save by UnchangedInterval = 6000 ms
     // most specific2: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 2000 ms
     // A1: last save = 3100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
 
     // steadyTime: 4000 ms
     // most specific: next save by UnchangedInterval = 6000 ms
@@ -305,32 +312,29 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     // general: next save by UnchangedInterval = 4000 ms
     handler.Start(startSteadyTime);
     std::queue<TValueFromMqtt> messages;
-    messages.push({"wb-adc", "Vin", "12.000", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
     // steadyTime: 0 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // general: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 0 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
 
     systemTime += milliseconds(100);
     steadyTime += milliseconds(100);
-    messages.push({"wb-adc", "A1", "2.000", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "A1"}, "2.000", "", 0.0, systemTime});
     // steadyTime: 100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // general: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 0 ms
     // A1: last save = 100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
 
     systemTime += milliseconds(1000);
     steadyTime += milliseconds(1000);
-    messages.push({"wb-adc", "Vin", "13.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "3.000",  "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "3.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
     // steadyTime: 1100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific: next save by ChangedInterval = 2000 ms
@@ -338,7 +342,7 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     // general: next save by ChangedInterval = 3100 ms
     // Vin: last save = 0 ms
     // A1: last save = 100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
 
     // steadyTime: 2000 ms
     // most specific: next save by UnchangedInterval = 3000 ms
@@ -366,15 +370,14 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     // The values are the same
     systemTime = startSystemTime + milliseconds(3500);
     steadyTime = startSteadyTime + milliseconds(3500);
-    messages.push({"wb-adc", "Vin", "14.000", "", 0.0, systemTime});
-    messages.push({"wb-adc", "A1",  "4.000",  "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
     // steadyTime: 3500 ms
     // most specific: next save by UnchangedInterval = 6000 ms
     // general: next save by UnchangedInterval = 4000 ms
     // Vin: last save = 2000 ms
     // A1: last save = 3100 ms
-    StoreByMessage(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
 
     // steadyTime: 4000 ms
     // most specific: next save by UnchangedInterval = 6000 ms
@@ -432,24 +435,20 @@ TEST_F(TDBLoggerTest, save_precision)
     auto timeStep = milliseconds(100);
     handler.Start(steadyTime);
     std::queue<TValueFromMqtt> messages;
-    messages.push({"wb-adc", "Vin", "12.000", "", 0.1, systemTime});
-    handler.ProcessMessages(messages);
-    handler.Store(steadyTime, systemTime);
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.1, systemTime});
+    handler.HandleMessages(messages, steadyTime, systemTime);
     steadyTime += timeStep;
     systemTime += timeStep;
-    messages.push({"wb-adc", "Vin", "12.001", "", 0.1, systemTime});
-    handler.ProcessMessages(messages);
-    handler.Store(steadyTime, systemTime);
+    messages.push({{"wb-adc", "Vin"}, "12.001", "", 0.1, systemTime});
+    handler.HandleMessages(messages, steadyTime, systemTime);
     steadyTime += timeStep;
     systemTime += timeStep;
-    messages.push({"wb-adc", "A1", "13", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
-    handler.Store(steadyTime, systemTime);
+    messages.push({{"wb-adc", "A1"}, "13", "", 0.0, systemTime});
+    handler.HandleMessages(messages, steadyTime, systemTime);
     steadyTime += timeStep;
     systemTime += timeStep;
-    messages.push({"wb-adc", "A1", "14.001", "", 0.0, systemTime});
-    handler.ProcessMessages(messages);
-    handler.Store(steadyTime, systemTime);
+    messages.push({{"wb-adc", "A1"}, "14.001", "", 0.0, systemTime});
+    handler.HandleMessages(messages, steadyTime, systemTime);
     steadyTime += timeStep;
     systemTime += timeStep;
 }
@@ -497,5 +496,152 @@ TEST(TPrecisionTest, find_precision)
         msg.Value = "100.001";
         UpdatePrecision(channelData, msg, true);
         ASSERT_DOUBLE_EQ(channelData.Precision, 0.001);
+    }
+}
+
+
+TEST_F(TDBLoggerTest, burst)
+{
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.MaxBurstRecords   = 3;
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime      = system_clock::now();
+    auto steadyTime      = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime    = steadyTime;
+
+    std::queue<TValueFromMqtt>  messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    /* Check that BurstRecords remains unchanged on save */
+
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
+    // steadyTime: 0 ms
+    // next save by UnchangedInterval = 3000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    systemTime += milliseconds(1100);
+    steadyTime += milliseconds(1100);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    // steadyTime: 1100 ms
+    // next save by UnchangedInterval = 3000 ms
+    // next save by ChangedInterval = 2000 ms
+    // Vin: last save = 0 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    /* Check that BurstRecords increases */
+
+    // steadyTime: 2000 ms
+    // next save by UnchangedInterval = 3000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 3000 ms
+    // next save by UnchangedInterval = 6000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 6000 ms
+    // next save by UnchangedInterval = 9000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(9000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 2);
+
+    // steadyTime: 9000 ms
+    // next save by UnchangedInterval = 12000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(12000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 3);
+
+    /* Check that BurstRecords is not more than limit */
+
+    // steadyTime: 12000 ms
+    // next save by UnchangedInterval = 15000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(15000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 3);
+
+    /* Check unscheduled write */
+
+    systemTime += milliseconds(2500);
+    steadyTime += milliseconds(2500);
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    // steadyTime: 14500 ms
+    // next save by UnchangedInterval = 15000 ms
+    // Vin: last save = 14500 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(15000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 2);
+
+    /* BurstRecords = 2 but only one interval without messages is passed. Check that BurstRecords is not decreased */
+
+    // steadyTime: 15000 ms
+    // next save by UnchangedInterval = 18000 ms
+    // Vin: last save = 14500 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(18000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 2);
+
+    // steadyTime: 18000 ms
+    // next save by UnchangedInterval = 21000 ms
+    // Vin: last save = 14500 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(21000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 2);
+
+    /* Check writing after BurstRecords underflow */
+
+    systemTime += milliseconds(2500);
+    steadyTime += milliseconds(2500);
+    messages.push({{"wb-adc", "Vin"}, "11.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin"}, "15.000", "", 0.0, systemTime});
+    // steadyTime: 20500 ms
+    // next save by UnchangedInterval = 21000 ms
+    // next save by ChangedInterval = 22500 ms
+    // Vin: last save = 20500 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(21000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 21000 ms
+    // next save by UnchangedInterval = 24000 ms
+    // next save by ChangedInterval = 22500 ms
+    // Vin: last save = 20500 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(22500), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 22500 ms
+    // next save by UnchangedInterval = 24000 ms
+    // Vin: last save = 22500 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(24000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 24000 ms
+    // next save by UnchangedInterval = 27000 ms
+    // Vin: last save = 22500 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(27000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    /* ADC pattern. One message every 500 ms */
+    for (size_t i = 0; i < 15; ++i) {
+        systemTime += milliseconds(500);
+        steadyTime += milliseconds(500);
+        messages.push({{"wb-adc", "Vin"}, "11.000", "", 0.0, systemTime});
+        StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
+        ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
     }
 }
