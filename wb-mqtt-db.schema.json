@@ -14,7 +14,7 @@
 
     "request_timeout": {
         "type": "integer",
-        "title": "Default request timeout (in seconds)",
+        "title": "Default request timeout (s)",
         "description": "Maximum time to process data request (if no such data in RPC request)",
         "propertyOrder": 2,
         "minimum": 0,
@@ -28,65 +28,126 @@
 
         "items" : {
             "type" : "object",
-            "headerTemplate": "Group {{self.name}}",
+            "headerTemplate": "{{self.name}}",
+            "title": "Group",
 
             "options" : {
               "disable_properties" : true,
-              "disable_edit_json" : true
+              "disable_edit_json" : true,
+              "compact": true,
+              "disable_collapse": true,
+              "wb": {
+                "disable_panel": true
+              }
             },
+
+            "_format": "grid",
 
             "properties" : {
               "name": {
                 "type": "string",
                 "title": "Group name",
-                "propertyOrder": 1
+                "propertyOrder": 1,
+                "minLength": 1,
+                "options": {
+                  "grid_columns": 12
+                }
               },
 
               "channels" : {
                 "type" : "array",
                 "title" : "Channels",
                 "_format" : "table",
-                "propertyOrder" : 2,
+                "propertyOrder" : 8,
                 "items": { 
-                  "type" : "string",
-                  "title" : "MQTT topic pattern"
+                "type" : "string",
+                "title" : "Channel pattern",
+                "minLength": 3,
+                "options": {
+                  "inputAttributes": {
+                    "placeholder":  "device/channel"
+                  }
+                }
                 },
                 "options" : {
-                  "disable_array_reorder" : true
+                  "disable_array_reorder" : true,
+                  "disable_array_delete_last_row" : true,
+                  "disable_array_delete_all_rows" : true,
+                  "compact": true,
+                  "grid_columns": 12
                 }
 
               },
 
               "values" : {
                 "type" : "integer",
-                "title" : "Number of values to store, per topic",
+                "title" : "Number of values to store, per channel",
                 "propertyOrder" : 3,
-                "minimum" : 1
+                "default": 4000,
+                "minimum" : 1,
+                "options": {
+                  "grid_columns": 6
+                }
               },
 
               "values_total" : {
                 "type" : "integer",
                 "title" : "Number of values to store, per group",
                 "propertyOrder" : 4,
-                "minimum" : 1
+                "default": 40000,
+                "minimum" : 1,
+                "options": {
+                  "grid_columns": 6
+                }
               },
 
               "min_interval" : {
                 "type" : "number",
                 "title" : "Minimum time interval between two data points (s)",
-                "description" : "History daemon will save at most 1 value per specified time interval",
+                "description" : "At most one value per specified time interval will be saved",
                 "propertyOrder" : 5,
-                "minimum" : 0
+                "minimum" : 0,
+                "default": 120,
+                "options": {
+                  "grid_columns": 6
+                }
               },
 
               "min_unchanged_interval" : {
                 "type" : "number",
                 "title" : "Minimum time interval between two data points with the same value (s)",
                 "propertyOrder" : 6,
-                "minimum" : 0
+                "minimum" : 0,
+                "default": 1200,
+                "options": {
+                  "grid_columns": 6
+                }
+              },
+
+              "max_burst" : {
+                "type" : "number",
+                "title" : "Maximum burst records count",
+                "propertyOrder" : 7,
+                "default": 30,
+                "minimum" : 0,
+                "options": {
+                  "grid_columns": 12
+                }
               }
           },
           "required": ["name", "channels"]
+        },
+
+        "_format": "tabs",
+
+        "options": {
+          "disable_array_reorder" : true,
+          "disable_array_delete_last_row" : true,
+          "disable_array_delete_all_rows" : true,
+          "disable_collapse": true,
+          "wb": {
+            "disable_panel": true
+          }
         }
     },
     "database" : {
@@ -98,6 +159,10 @@
   },
 
   "required": ["database", "groups"],
+
+  "options": {
+    "disable_collapse": true
+  },
 
   "configFile": {
     "path": "/etc/wb-mqtt-db.conf",
