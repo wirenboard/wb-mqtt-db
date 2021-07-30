@@ -41,6 +41,8 @@ struct TAccumulator
 //! Information about speceific channel
 struct TChannel
 {
+    PChannelInfo ChannelInfo;
+
     std::string LastValue;
 
     TAccumulator Accumulator;
@@ -59,12 +61,14 @@ struct TChannel
     bool Retained = false;
 
     double Precision = 0.0;
+
+    //! Number of available burst records
+    int BurstRecords = 0;
 };
 
 struct TValueFromMqtt
 {
-    std::string                           Device;
-    std::string                           Control;
+    TChannelName                          Channel;
     std::string                           Value;
     std::string                           Type;
     double                                Precision = 0.0;
@@ -86,7 +90,7 @@ void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNu
 //! A group of channels with storage settings
 struct TLoggingGroup
 {
-    typedef std::unordered_map<TChannelName, std::pair<PChannelInfo, TChannel>> TChannelsMap;
+    typedef std::unordered_map<TChannelName, TChannel> TChannelsMap;
 
     std::vector<TChannelName> ControlPatterns;
 
@@ -95,6 +99,9 @@ struct TLoggingGroup
 
     //! Maximum records in DB of the group. Unlimited if 0
     int MaxRecords = 0;
+
+    //! Maximum burst records
+    int MaxBurstRecords = 0;
 
     //! Interval of saving modified values
     std::chrono::seconds ChangedInterval = std::chrono::seconds(0);
@@ -111,7 +118,7 @@ struct TLoggingGroup
     std::chrono::steady_clock::time_point LastUSaved;
 
     //! Check if device/control matches any of MqttTopicPatterns
-    bool MatchPatterns(const std::string& device, const std::string& control) const;
+    bool MatchPatterns(const TChannelName& channelName) const;
 
     TChannel& GetChannelData(const TChannelName& channelName);
 };
@@ -140,9 +147,8 @@ class IChannelWriter
 public:
     virtual ~IChannelWriter() = default;
 
-    virtual void WriteChannel(IStorage&                             storage, 
-                              TChannelInfo&                         channelInfo, 
-                              const TChannel&                       channelData,
+    virtual void WriteChannel(IStorage&                             storage,
+                              TChannel&                             channel,
                               std::chrono::system_clock::time_point writeTime,
                               const std::string&                    groupName) = 0;
 };
@@ -151,8 +157,7 @@ class TChannelWriter: public IChannelWriter
 {
 public:
     void WriteChannel(IStorage&                             storage, 
-                      TChannelInfo&                         channelInfo, 
-                      const TChannel&                       channelData,
+                      TChannel&                             channel,
                       std::chrono::system_clock::time_point writeTime,
                       const std::string&                    groupName) override;
 };
@@ -182,14 +187,28 @@ public:
 
     void Start(std::chrono::steady_clock::time_point currentTime);
 
-    std::chrono::steady_clock::time_point Store(std::chrono::steady_clock::time_point currentTime,
-                                                std::chrono::system_clock::time_point writeTime);
-
-    void ProcessMessages(std::queue<TValueFromMqtt>& messages);
+    /**
+     * @brief Store messages or avegare values for next call
+     * 
+     * @return next time to call HandleMessages
+     */
+    std::chrono::steady_clock::time_point HandleMessages(std::queue<TValueFromMqtt>& messages, 
+                                                         std::chrono::steady_clock::time_point currentTime,
+                                                         std::chrono::system_clock::time_point writeTime);
 private:
 
+    std::chrono::steady_clock::time_point Store(std::chrono::steady_clock::time_point currentTime,
+                                                std::chrono::system_clock::time_point writeTime);
+    void ProcessMessages(std::queue<TValueFromMqtt>& messages, std::chrono::steady_clock::time_point currentTime);
     void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
     void CheckGroupOverflow(const TLoggingGroup& group);
+    void UpdateBurstRecordsCount(const TLoggingGroup& group, TChannel& channel, std::chrono::steady_clock::time_point currentTime);
+    void SaveMessage(const TValueFromMqtt& msg, std::chrono::steady_clock::time_point currentTime);
+    void WriteChannel(const TChannelName&                   channelName,
+                      const TLoggingGroup&                  group,
+                      std::chrono::steady_clock::time_point currentTime,
+                      std::chrono::system_clock::time_point writeTime,
+                      TChannel&                             channel);
 
     TLoggerCache&                   Cache;
     IStorage&                       Storage;
