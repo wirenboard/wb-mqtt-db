@@ -1,6 +1,6 @@
 #include "dblogger.h"
 
-#include "log.h"
+#include "benchmark.h"
 
 #include <wblib/json_utils.h>
 #include <wblib/wbmqtt.h>
@@ -388,7 +388,7 @@ void TMQTTDBLogger::CheckGroupOverflow(const TLoggingGroup& group)
 steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point currentTime)
 {
 #ifndef NBENCHMARK
-    TBenchmark benchmark("Bulk processing took", false);
+    TBenchmark benchmark(::Debug, "[dblogger] Bulk processing took", false);
 #endif
 
     TNextSaveTime next;
@@ -488,7 +488,7 @@ public:
 Json::Value TMQTTDBLoggerRpcHandler::GetChannels(const Json::Value& /*params*/)
 {
 #ifndef NBENCHMARK
-    TBenchmark benchmark("RPC request took");
+    TBenchmark benchmark(::Debug, "[dblogger] RPC request took");
 #endif
 
     LOG(Debug) << "Run RPC get_channels()";
@@ -573,7 +573,7 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     LOG(Debug) << "Run RPC get_values()";
 
 #ifndef NBENCHMARK
-    TBenchmark benchmark("get_values() took");
+    TBenchmark benchmark(::Debug, "[dblogger] get_values() took");
 #endif
 
     if (!params.isMember("channels"))
@@ -634,24 +634,6 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         throw;
     }
     return visitor.Root;
-}
-
-TBenchmark::TBenchmark(const string& message, bool enabled) : Message(message), Enabled(enabled)
-{
-    Start = high_resolution_clock::now();
-}
-
-TBenchmark::~TBenchmark()
-{
-    if (Enabled) {
-        high_resolution_clock::time_point stop = high_resolution_clock::now();
-        LOG(Debug) << Message << " " << duration_cast<milliseconds>(stop - Start).count() << " ms";
-    }
-}
-
-void TBenchmark::Enable()
-{
-    Enabled = true;
 }
 
 void TChannelWriter::WriteChannel(IStorage&                storage, 
