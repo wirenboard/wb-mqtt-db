@@ -1,18 +1,6 @@
-Subscribe: /devices/+/meta/driver (QoS 0)
-Subscribe: /devices/wb-adc/meta/Vin (QoS 0)
-Subscribe: /devices/wb-adc/meta/A1 (QoS 0)
-Subscribe: /devices/wb-adc/controls/Vin/meta/+ (QoS 0)
-Subscribe: /devices/wb-adc/controls/A1/meta/+ (QoS 0)
-Subscribe: /devices/wb-adc/controls/Vin (QoS 0)
-Subscribe: /devices/wb-adc/controls/A1 (QoS 0)
-Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
-Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
-Publish: /devices/wb-adc/controls/Vin: '12.000' (QoS 1, retained)
+Store by message 0
 Create channel wb-adc/Vin
-0
-Write "most specific" wb-adc/Vin
+Write "most specific" wb-adc/Vin 0
   Last value: 12.000
   Changed: 1
   Accumulator value count: 1
@@ -22,10 +10,9 @@ Storage data:
   Max: 
 Set precision for wb-adc/Vin to 0.001
 Commit
-Publish: /devices/wb-adc/controls/A1: '2.000' (QoS 1, retained)
+Store by message 100
 Create channel wb-adc/A1
-0
-Write "most specific2" wb-adc/A1
+Write "most specific2" wb-adc/A1 100
   Last value: 2.000
   Changed: 1
   Accumulator value count: 1
@@ -35,12 +22,9 @@ Storage data:
   Max: 
 Set precision for wb-adc/A1 to 0.001
 Commit
-Publish: /devices/wb-adc/controls/Vin: '13.000' (QoS 1, retained)
-Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1, retained)
-Publish: /devices/wb-adc/controls/A1: '3.000' (QoS 1, retained)
-Publish: /devices/wb-adc/controls/A1: '4.000' (QoS 1, retained)
-2
-Write "most specific" wb-adc/Vin
+Store by message 1100
+Store by timeout 2000
+Write "most specific" wb-adc/Vin 2000
   Last value: 14.000
   Changed: 1
   Accumulator value count: 2
@@ -49,8 +33,9 @@ Storage data:
   Min: 13
   Max: 14
 Commit
-3
-Write "most specific2" wb-adc/A1
+Store by timeout 3000
+Store by timeout 3100
+Write "most specific2" wb-adc/A1 3100
   Last value: 4.000
   Changed: 1
   Accumulator value count: 2
@@ -59,20 +44,10 @@ Storage data:
   Min: 3
   Max: 4
 Commit
-Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1, retained)
-Publish: /devices/wb-adc/controls/A1: '4.000' (QoS 1, retained)
-4
-Write "most specific2" wb-adc/A1
-  Last value: 4.000
-  Changed: 0
-  Accumulator value count: 1
-Storage data:
-  Value: 4.000
-  Min: 
-  Max: 
-Commit
-6
-Write "most specific" wb-adc/Vin
+Store by message 3500
+Store by timeout 4000
+Store by timeout 6000
+Write "most specific" wb-adc/Vin 6000
   Last value: 14.000
   Changed: 0
   Accumulator value count: 1
@@ -81,14 +56,15 @@ Storage data:
   Min: 
   Max: 
 Commit
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_values/+
-Publish: /rpc/v1/db_logger/history/get_values: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_channels/+
-Publish: /rpc/v1/db_logger/history/get_channels: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /devices/wb-adc/controls/A1
-Unsubscribe -- dblogger_test: /devices/wb-adc/controls/A1/meta/+
-Unsubscribe -- dblogger_test: /devices/wb-adc/controls/Vin
-Unsubscribe -- dblogger_test: /devices/wb-adc/controls/Vin/meta/+
-Unsubscribe -- dblogger_test: /devices/wb-adc/meta/A1
-Unsubscribe -- dblogger_test: /devices/wb-adc/meta/Vin
-stop: dblogger_test
+Store by timeout 8000
+Write "most specific2" wb-adc/A1 8000
+  Last value: 4.000
+  Changed: 0
+  Accumulator value count: 1
+Storage data:
+  Value: 4.000
+  Min: 
+  Max: 
+Commit
+Store by timeout 9000
+Store by timeout 12000

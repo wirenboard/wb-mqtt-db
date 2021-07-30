@@ -180,7 +180,10 @@ class TMqttDbLoggerMessageHandler
 public:
     TMqttDbLoggerMessageHandler(TLoggerCache& cache, IStorage& storage, std::unique_ptr<IChannelWriter> channelWriter);
 
-    std::chrono::steady_clock::time_point ProcessTimer(std::chrono::steady_clock::time_point currentTime);
+    void Start(std::chrono::steady_clock::time_point currentTime);
+
+    std::chrono::steady_clock::time_point Store(std::chrono::steady_clock::time_point currentTime,
+                                                std::chrono::system_clock::time_point writeTime);
 
     void ProcessMessages(std::queue<TValueFromMqtt>& messages);
 private:
