@@ -13,7 +13,7 @@ old_config = json.load(open(argv[1]))
 
 if (isinstance(old_config["groups"], list)):
     print "Your configfile is already supported"
-    exit(2)
+    exit(0)
 
 new_config = deepcopy(old_config)
 new_config["groups"] = []
