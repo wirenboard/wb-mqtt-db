@@ -1,3 +1,9 @@
+wb-mqtt-db (2.3.1) stable; urgency=medium
+
+  * Configuration error during package install is fixed
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Mon, 02 Aug 2021 16:28:34 +0500
+
 wb-mqtt-db (2.3.0) stable; urgency=medium
 
   * Text values are not averaged
