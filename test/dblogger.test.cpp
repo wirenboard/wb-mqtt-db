@@ -499,7 +499,6 @@ TEST(TPrecisionTest, find_precision)
     }
 }
 
-
 TEST_F(TDBLoggerTest, burst)
 {
     TLoggerCache cache;
@@ -644,4 +643,43 @@ TEST_F(TDBLoggerTest, burst)
         StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
         ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
     }
+}
+
+TEST_F(TDBLoggerTest, burstSwitch)
+{
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.MaxBurstRecords   = 3;
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime      = system_clock::now();
+    auto steadyTime      = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime    = steadyTime;
+
+    std::queue<TValueFromMqtt>  messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    for (size_t i = 0; i < 5; ++i) {
+        messages.push({{"wb-adc", "Vin"}, std::to_string(i), "switch", 0.0, systemTime});
+    }
+    // steadyTime: 0 ms
+    // next save by UnchangedInterval = 3000 ms
+    // next save by ChangedInterval = 2000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 2000 ms
+    // next save by UnchangedInterval = 3000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
 }

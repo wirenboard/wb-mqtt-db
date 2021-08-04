@@ -64,13 +64,16 @@ struct TChannel
 
     //! Number of available burst records
     int BurstRecords = 0;
+
+    //! A message from the channel is received for the first time
+    bool FirstMessage = true;
 };
 
 struct TValueFromMqtt
 {
     TChannelName                          Channel;
     std::string                           Value;
-    std::string                           Type;
+    std::string                           ControlType;
     double                                Precision = 0.0;
     std::chrono::system_clock::time_point Time;
 };

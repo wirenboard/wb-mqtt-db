@@ -61,6 +61,12 @@ namespace
         double v = round_to > 0.0 ? std::round(val / round_to) * round_to : val;
         return WBMQTT::StringFormat("%.15g", v);
     }
+
+    bool ShouldStartWithMaxBurst(const std::string& controlType)
+    {
+        const std::array<const char*, 4> types = {"switch", "alarm", "wo-switch", "pushbutton"};
+        return std::find(types.begin(), types.end(), controlType) != types.end();
+    }
 }
 
 namespace WBMQTT
@@ -682,6 +688,12 @@ void TMqttDbLoggerMessageHandler::SaveMessage(const TValueFromMqtt& msg, steady_
             //TODO: It is impossible to get information about retained status from TControlValueEvent. Should we remove the field?
             channelData.Retained           = false;
             channelData.HasUnsavedMessages = true;
+            if (channelData.FirstMessage) {
+                if (ShouldStartWithMaxBurst(msg.ControlType)) {
+                    channelData.BurstRecords = group.MaxBurstRecords;
+                }
+                channelData.FirstMessage = false;
+            }
             if (channelData.BurstRecords) {
                 WriteChannel(msg.Channel, group, currentTime, msg.Time, channelData);
                 CheckGroupOverflow(group);
