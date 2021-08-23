@@ -1,3 +1,9 @@
+wb-mqtt-db (2.3.2) stable; urgency=medium
+
+  * Channel's precision storage is fixed
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Mon, 23 Aug 2021 14:12:06 +0500
+
 wb-mqtt-db (2.3.1) stable; urgency=medium
 
   * Configuration error during package install is fixed
