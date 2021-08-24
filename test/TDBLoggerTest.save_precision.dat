@@ -1,13 +1,3 @@
-Subscribe: /devices/+/meta/driver (QoS 0)
-Subscribe: /devices/+/meta/+ (QoS 0)
-Subscribe: /devices/+/controls/+/meta/+ (QoS 0)
-Subscribe: /devices/+/controls/+ (QoS 0)
-Subscribe: /rpc/v1/db_logger/history/get_values/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_values: '1' (QoS 2, retained)
-Subscribe: /rpc/v1/db_logger/history/get_channels/+ (QoS 0)
-Publish: /rpc/v1/db_logger/history/get_channels: '1' (QoS 2, retained)
-Publish: /devices/wb-adc/controls/Vin/meta/precision: '0.1' (QoS 1, retained)
-Publish: /devices/wb-adc/controls/Vin: '12.000' (QoS 1, retained)
 Create channel wb-adc/Vin
 Storage data:
   Value: 12.000
@@ -15,13 +5,11 @@ Storage data:
   Max: 
 Set precision for wb-adc/Vin to 0.1
 Commit
-Publish: /devices/wb-adc/controls/Vin: '12.001' (QoS 1)
 Storage data:
   Value: 12.001
   Min: 
   Max: 
 Commit
-Publish: /devices/wb-adc/controls/A1: '13' (QoS 1)
 Create channel wb-adc/A1
 Storage data:
   Value: 13
@@ -29,18 +17,9 @@ Storage data:
   Max: 
 Set precision for wb-adc/A1 to 1
 Commit
-Publish: /devices/wb-adc/controls/A1: '14.001' (QoS 1)
 Storage data:
   Value: 14.001
   Min: 
   Max: 
 Set precision for wb-adc/A1 to 0.001
 Commit
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_values/+
-Publish: /rpc/v1/db_logger/history/get_values: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /rpc/v1/db_logger/history/get_channels/+
-Publish: /rpc/v1/db_logger/history/get_channels: '' (QoS 2, retained)
-Unsubscribe -- dblogger_test: /devices/+/controls/+
-Unsubscribe -- dblogger_test: /devices/+/controls/+/meta/+
-Unsubscribe -- dblogger_test: /devices/+/meta/+
-stop: dblogger_test

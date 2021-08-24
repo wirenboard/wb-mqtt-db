@@ -266,9 +266,7 @@ void TMQTTDBLogger::Start()
     RpcServer->Start();
     RpcHandler.Register(*RpcServer);
 
-    for (auto& group : Cache.Groups) {
-        group.LastUSaved = nextSaveTime;
-    }
+    MessageHandler.Start(nextSaveTime);
 
     while (Active) {
         steady_clock::time_point currentTime;
@@ -285,7 +283,7 @@ void TMQTTDBLogger::Start()
             currentTime = steady_clock::now();
         }
         MessageHandler.ProcessMessages(localQueue);
-        nextSaveTime = MessageHandler.ProcessTimer(currentTime);
+        nextSaveTime = MessageHandler.Store(currentTime, system_clock::now());
     }
 }
 
@@ -314,7 +312,9 @@ bool ShouldWriteChannel(steady_clock::time_point now,
     if (channel.Changed) {
         return (now >= channel.LastSaved + group.ChangedInterval);
     }
-    return (now >= group.LastUSaved + group.UnchangedInterval) && channel.HasUnsavedMessages;
+    return channel.HasUnsavedMessages &&
+           (now >= channel.LastSaved + group.UnchangedInterval) &&
+           (now >= group.LastUSaved + group.UnchangedInterval);
 }
 
 struct TNextSaveTime
@@ -569,15 +569,21 @@ TMqttDbLoggerMessageHandler::TMqttDbLoggerMessageHandler(TLoggerCache& cache, IS
     : Cache(cache), Storage(storage), ChannelWriter(std::move(channelWriter))
 {}
 
-std::chrono::steady_clock::time_point TMqttDbLoggerMessageHandler::ProcessTimer(std::chrono::steady_clock::time_point currentTime)
+void TMqttDbLoggerMessageHandler::Start(std::chrono::steady_clock::time_point currentTime)
+{
+    for (auto& group : Cache.Groups) {
+        group.LastUSaved = currentTime;
+    }
+}
+
+steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_point currentTime,
+                                                            system_clock::time_point writeTime)
 {
 #ifndef NBENCHMARK
     TBenchmark benchmark(::Debug, "[dblogger] Bulk processing took", false);
 #endif
 
     TNextSaveTime next;
-
-    auto writeTime = system_clock::now();
 
     for (auto& group : Cache.Groups) {
 
