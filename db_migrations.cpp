@@ -1,5 +1,8 @@
 #include "db_migrations.h"
 
+#include <iostream>
+#include <sqlite3.h>
+
 namespace
 {
     void ConvertDb0To1(SQLite::Database& db)
@@ -208,9 +211,6 @@ namespace
                 "SELECT uid, channel, value, timestamp, max, min, retained "
                 "FROM data_old");
 
-        // add precision column to channel
-        db.exec("ALTER TABLE channels ADD COLUMN precision REAL");
-
         // drop old data table
         db.exec("DROP TABLE data_old");
 
@@ -218,6 +218,20 @@ namespace
         db.exec("DROP TABLE groups");
 
         db.exec("UPDATE variables SET value=\"5\" WHERE name=\"db_version\"");
+    }
+
+    void ConvertDb5To6(SQLite::Database& db)
+    {
+        // add precision column to channel
+        try {
+            db.exec("ALTER TABLE channels ADD COLUMN precision REAL");
+        } catch (const SQLite::Exception& e) { // The column could de already added
+            if( e.getErrorCode() != SQLITE_ERROR ) {
+                throw;
+            }
+        }
+
+        db.exec("UPDATE variables SET value=\"6\" WHERE name=\"db_version\"");
     }
 }
 
@@ -227,5 +241,6 @@ std::vector<ConvertDbFnType> GetMigrations()
             ConvertDb1To2,
             ConvertDb2To3,
             ConvertDb3To4,
-            ConvertDb4To5};
+            ConvertDb4To5,
+            ConvertDb5To6};
 }
