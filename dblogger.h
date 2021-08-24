@@ -175,6 +175,24 @@ private:
     std::chrono::seconds   GetValuesRpcRequestTimeout;
 };
 
+class TMqttDbLoggerMessageHandler
+{
+public:
+    TMqttDbLoggerMessageHandler(TLoggerCache& cache, IStorage& storage, std::unique_ptr<IChannelWriter> channelWriter);
+
+    std::chrono::steady_clock::time_point ProcessTimer(std::chrono::steady_clock::time_point currentTime);
+
+    void ProcessMessages(std::queue<TValueFromMqtt>& messages);
+private:
+
+    void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
+    void CheckGroupOverflow(const TLoggingGroup& group);
+
+    TLoggerCache&                   Cache;
+    IStorage&                       Storage;
+    std::unique_ptr<IChannelWriter> ChannelWriter;
+};
+
 class TMQTTDBLogger
 {
 public:
@@ -192,14 +210,6 @@ public:
     void Stop();
 
 private:
-    std::chrono::steady_clock::time_point ProcessTimer(
-        std::chrono::steady_clock::time_point currentTime);
-
-    void ProcessMessages(std::queue<TValueFromMqtt>& messages);
-
-    void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
-    void CheckGroupOverflow(const TLoggingGroup& group);
-
     TLoggerCache                      Cache;
     WBMQTT::PDeviceDriver             Driver;
     std::unique_ptr<IStorage>         Storage;
@@ -210,7 +220,7 @@ private:
     std::queue<TValueFromMqtt>        MessagesQueue;
     std::shared_ptr<TControlFilter>   Filter;
     WBMQTT::PDriverEventHandlerHandle EventHandle;
-    std::unique_ptr<IChannelWriter>   ChannelWriter;
+    TMqttDbLoggerMessageHandler       MessageHandler;
     TMQTTDBLoggerRpcHandler           RpcHandler;
 };
 

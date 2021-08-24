@@ -211,7 +211,7 @@ TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver                   driver,
       Storage(std::move(storage)),
       RpcServer(rpcServer),
       Active(false),
-      ChannelWriter(std::move(channelWriter)),
+      MessageHandler(Cache, *Storage, std::move(channelWriter)),
       RpcHandler(Cache, *Storage, getValuesRpcRequestTimeout)
 {
 
@@ -284,8 +284,8 @@ void TMQTTDBLogger::Start()
             MessagesQueue.swap(localQueue);
             currentTime = steady_clock::now();
         }
-        ProcessMessages(localQueue);
-        nextSaveTime = ProcessTimer(currentTime);
+        MessageHandler.ProcessMessages(localQueue);
+        nextSaveTime = MessageHandler.ProcessTimer(currentTime);
     }
 }
 
@@ -303,37 +303,6 @@ void TMQTTDBLogger::Stop()
     WakeupCondition.notify_all();
     RpcServer->Stop();
     Driver->StopLoop();
-}
-
-void TMQTTDBLogger::ProcessMessages(queue<TValueFromMqtt>& messages)
-{
-    while (!messages.empty()) {
-        auto msg = messages.front();
-        if (!msg.Value.empty()) {
-            for (auto& group : Cache.Groups) {
-                if (group.MatchPatterns(msg.Device, msg.Control)) {
-                    auto& channelData = group.GetChannelData(TChannelName(msg.Device, msg.Control));
-
-                    const char* status = "is same";
-                    if (msg.Value != channelData.LastValue) {
-                        status              = "IS CHANGED";
-                        channelData.Changed = true;
-                    }
-                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Device << "/" << msg.Control << ": \"" << msg.Value
-                              << "\" " << status;
-
-                    bool isNumber = channelData.Accumulator.Update(msg.Value);
-                    UpdatePrecision(channelData, msg, isNumber);
-                    channelData.LastValue          = msg.Value;
-                    channelData.LastDataTime       = msg.Time;
-                    channelData.Retained           = false;
-                    channelData.HasUnsavedMessages = true;
-                    break;
-                }
-            }
-        }
-        messages.pop();
-    }
 }
 
 // check if current group is ready to process changed values
@@ -359,97 +328,6 @@ struct TNextSaveTime
         IsEmpty = false;
     }
 };
-
-void TMQTTDBLogger::CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel)
-{
-    if (group.MaxChannelRecords > 0) {
-        if (channel.GetRecordCount() > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName()
-                      << ", row count " << channel.GetRecordCount() 
-                      << ", limit " << group.MaxChannelRecords;
-            Storage->DeleteRecords(channel, channel.GetRecordCount() - group.MaxChannelRecords);
-        }
-    }
-}
-
-void TMQTTDBLogger::CheckGroupOverflow(const TLoggingGroup& group)
-{
-    if (group.MaxRecords > 0) {
-        auto groupRecordCount = GetRecordCount(group);
-        if (groupRecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Group data limit is reached: group " << group.Name 
-                      << ", row count " << groupRecordCount
-                      << ", limit " << group.MaxRecords;
-            Storage->DeleteRecords(GetChannelInfos(group), groupRecordCount - group.MaxRecords);
-        }
-    }
-}
-
-steady_clock::time_point TMQTTDBLogger::ProcessTimer(steady_clock::time_point currentTime)
-{
-#ifndef NBENCHMARK
-    TBenchmark benchmark(::Debug, "[dblogger] Bulk processing took", false);
-#endif
-
-    TNextSaveTime next;
-
-    auto writeTime = system_clock::now();
-
-    for (auto& group : Cache.Groups) {
-
-        bool saved = false;
-
-        for (auto& channel : group.Channels) {
-            const char*         saveStatus  = "nothing to save";
-            const TChannelName& channelName = channel.first;
-            PChannelInfo&       channelInfo = channel.second.first;
-            TChannel&           channelData = channel.second.second;
-            if (ShouldWriteChannel(currentTime, group, channelData)) {
-                saveStatus = (channelData.Changed ? "save changed" : "save UNCHANGED");
-                if (!channelInfo) {
-                    channelInfo = Storage->CreateChannel(channelName);
-                }
-                ChannelWriter->WriteChannel(*Storage, *channelInfo, channelData, writeTime, group.Name);
-                saved = true;
-
-                if (!channelData.Changed) {
-                    group.LastUSaved = currentTime;
-                }
-
-                channelData.Accumulator.Reset();
-                channelData.LastSaved          = currentTime;
-                channelData.Changed            = false;
-                channelData.HasUnsavedMessages = false;
-
-                CheckChannelOverflow(group, *channelInfo);
-            } else {
-                if (channelData.Changed) {
-                    next.Update(channelData.LastSaved + group.ChangedInterval);
-                }
-            }
-            if (::Debug.IsEnabled()) {
-                LOG(Debug) << "\"" << group.Name << "\" " << channel.first << ": " << saveStatus;
-            }
-        }
-
-        if (saved) {
-            CheckGroupOverflow(group);
-#ifndef NBENCHMARK
-            benchmark.Enable();
-#endif
-        }
-
-        if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
-            group.LastUSaved = group.LastUSaved + group.UnchangedInterval;
-        }
-
-        next.Update(group.LastUSaved + group.UnchangedInterval);
-    }
-
-    Storage->Commit();
-
-    return next.Time;
-}
 
 TMQTTDBLoggerRpcHandler::TMQTTDBLoggerRpcHandler(const TLoggerCache&    cache,
                                                  IStorage&              storage,
@@ -683,5 +561,132 @@ void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNu
     }
     if ((channelData.Precision == 0.0) || (channelData.Precision > precision)) {
         channelData.Precision = precision;
+    }
+}
+
+
+TMqttDbLoggerMessageHandler::TMqttDbLoggerMessageHandler(TLoggerCache& cache, IStorage& storage, std::unique_ptr<IChannelWriter> channelWriter)
+    : Cache(cache), Storage(storage), ChannelWriter(std::move(channelWriter))
+{}
+
+std::chrono::steady_clock::time_point TMqttDbLoggerMessageHandler::ProcessTimer(std::chrono::steady_clock::time_point currentTime)
+{
+#ifndef NBENCHMARK
+    TBenchmark benchmark(::Debug, "[dblogger] Bulk processing took", false);
+#endif
+
+    TNextSaveTime next;
+
+    auto writeTime = system_clock::now();
+
+    for (auto& group : Cache.Groups) {
+
+        bool saved = false;
+
+        for (auto& channel : group.Channels) {
+            const char*         saveStatus  = "nothing to save";
+            const TChannelName& channelName = channel.first;
+            PChannelInfo&       channelInfo = channel.second.first;
+            TChannel&           channelData = channel.second.second;
+            if (ShouldWriteChannel(currentTime, group, channelData)) {
+                saveStatus = (channelData.Changed ? "save changed" : "save UNCHANGED");
+                if (!channelInfo) {
+                    channelInfo = Storage.CreateChannel(channelName);
+                }
+                ChannelWriter->WriteChannel(Storage, *channelInfo, channelData, writeTime, group.Name);
+                saved = true;
+
+                if (!channelData.Changed) {
+                    group.LastUSaved = currentTime;
+                }
+
+                channelData.Accumulator.Reset();
+                channelData.LastSaved          = currentTime;
+                channelData.Changed            = false;
+                channelData.HasUnsavedMessages = false;
+
+                CheckChannelOverflow(group, *channelInfo);
+            } else {
+                if (channelData.Changed) {
+                    next.Update(channelData.LastSaved + group.ChangedInterval);
+                }
+            }
+            if (::Debug.IsEnabled()) {
+                LOG(Debug) << "\"" << group.Name << "\" " << channel.first << ": " << saveStatus;
+            }
+        }
+
+        if (saved) {
+            CheckGroupOverflow(group);
+#ifndef NBENCHMARK
+            benchmark.Enable();
+#endif
+        }
+
+        if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
+            group.LastUSaved = group.LastUSaved + group.UnchangedInterval;
+        }
+
+        next.Update(group.LastUSaved + group.UnchangedInterval);
+    }
+
+    Storage.Commit();
+
+    return next.Time;
+}
+
+void TMqttDbLoggerMessageHandler::ProcessMessages(std::queue<TValueFromMqtt>& messages)
+{
+    while (!messages.empty()) {
+        auto msg = messages.front();
+        if (!msg.Value.empty()) {
+            for (auto& group : Cache.Groups) {
+                if (group.MatchPatterns(msg.Device, msg.Control)) {
+                    auto& channelData = group.GetChannelData(TChannelName(msg.Device, msg.Control));
+
+                    const char* status = "is same";
+                    if (msg.Value != channelData.LastValue) {
+                        status              = "IS CHANGED";
+                        channelData.Changed = true;
+                    }
+                    LOG(Debug) << "\"" << group.Name << "\" " << msg.Device << "/" << msg.Control << ": \"" << msg.Value
+                              << "\" " << status;
+
+                    bool isNumber = channelData.Accumulator.Update(msg.Value);
+                    UpdatePrecision(channelData, msg, isNumber);
+                    channelData.LastValue          = msg.Value;
+                    channelData.LastDataTime       = msg.Time;
+                    channelData.Retained           = false;
+                    channelData.HasUnsavedMessages = true;
+                    break;
+                }
+            }
+        }
+        messages.pop();
+    }
+}
+
+void TMqttDbLoggerMessageHandler::CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel)
+{
+    if (group.MaxChannelRecords > 0) {
+        if (channel.GetRecordCount() > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
+            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName()
+                      << ", row count " << channel.GetRecordCount() 
+                      << ", limit " << group.MaxChannelRecords;
+            Storage.DeleteRecords(channel, channel.GetRecordCount() - group.MaxChannelRecords);
+        }
+    }
+}
+
+void TMqttDbLoggerMessageHandler::CheckGroupOverflow(const TLoggingGroup& group)
+{
+    if (group.MaxRecords > 0) {
+        auto groupRecordCount = GetRecordCount(group);
+        if (groupRecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
+            LOG(Warn) << "Group data limit is reached: group " << group.Name 
+                      << ", row count " << groupRecordCount
+                      << ", limit " << group.MaxRecords;
+            Storage.DeleteRecords(GetChannelInfos(group), groupRecordCount - group.MaxRecords);
+        }
     }
 }
