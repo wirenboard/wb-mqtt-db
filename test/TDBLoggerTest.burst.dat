@@ -1,0 +1,102 @@
+Store by message 0
+Create channel wb-adc/Vin
+Write "all" wb-adc/Vin 0
+  Last value: 12.000
+  Changed: 1
+  Accumulator value count: 1
+Storage data:
+  Value: 12.000
+  Min: 
+  Max: 
+Set precision for wb-adc/Vin to 0.001
+Commit
+Store by message 1100
+Store by timeout 2000
+Write "all" wb-adc/Vin 2000
+  Last value: 14.000
+  Changed: 1
+  Accumulator value count: 2
+Storage data:
+  Value: 13.5
+  Min: 13
+  Max: 14
+Commit
+Store by timeout 3000
+Store by timeout 6000
+Store by timeout 9000
+Store by timeout 12000
+Store by message 14500
+Write "all" wb-adc/Vin 14500
+  Last value: 14.000
+  Changed: 0
+  Accumulator value count: 1
+Storage data:
+  Value: 14.000
+  Min: 
+  Max: 
+Commit
+Store by timeout 15000
+Store by timeout 18000
+Store by message 20500
+Write "all" wb-adc/Vin 20500
+  Last value: 11.000
+  Changed: 1
+  Accumulator value count: 1
+Storage data:
+  Value: 11.000
+  Min: 
+  Max: 
+Write "all" wb-adc/Vin 20500
+  Last value: 12.000
+  Changed: 1
+  Accumulator value count: 1
+Storage data:
+  Value: 12.000
+  Min: 
+  Max: 
+Commit
+Store by timeout 21000
+Store by timeout 22500
+Write "all" wb-adc/Vin 22500
+  Last value: 15.000
+  Changed: 1
+  Accumulator value count: 3
+Storage data:
+  Value: 14
+  Min: 13
+  Max: 15
+Commit
+Store by timeout 24000
+Store by message 24500
+Write "all" wb-adc/Vin 24500
+  Last value: 11.000
+  Changed: 1
+  Accumulator value count: 1
+Storage data:
+  Value: 11.000
+  Min: 
+  Max: 
+Commit
+Store by message 25000
+Store by message 25500
+Store by message 26000
+Store by message 26500
+Store by message 27000
+Store by message 27500
+Store by message 28000
+Store by message 28500
+Store by message 29000
+Store by message 29500
+Store by message 30000
+Write "all" wb-adc/Vin 30000
+  Last value: 11.000
+  Changed: 0
+  Accumulator value count: 11
+Storage data:
+  Value: 11
+  Min: 11
+  Max: 11
+Commit
+Store by message 30500
+Store by message 31000
+Store by message 31500

@@ -61,6 +61,7 @@ TEST_F(TConfigTest, good_config)
     ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[1].Device, "wb-gpio");
     ASSERT_EQ(c.Cache.Groups[1].ControlPatterns[1].Control, "+");
     ASSERT_EQ(c.Cache.Groups[1].UnchangedInterval, std::chrono::seconds(3200));
+    ASSERT_EQ(c.Cache.Groups[1].MaxBurstRecords, 100);
 
     ASSERT_EQ(c.Cache.Groups[2].Name, "most specific");
     ASSERT_EQ(c.Cache.Groups[2].ChangedInterval, std::chrono::seconds(420));

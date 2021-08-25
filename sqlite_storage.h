@@ -1,7 +1,8 @@
 #pragma once
 
 #include "SQLiteCpp/SQLiteCpp.h"
-#include "dblogger.h"
+#include "storage.h"
+#include <mutex>
 
 /**
  * @brief The class implements Istorage interface for SQLite.
