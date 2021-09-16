@@ -4,23 +4,6 @@
 #include <wblib/json_utils.h>
 
 using namespace WBMQTT;
-using namespace std::chrono;
-
-namespace WBMQTT
-{
-    namespace JSON
-    {
-        template <> inline bool Is<seconds>(const Json::Value& value)
-        {
-            return value.isUInt();
-        }
-
-        template <> inline seconds As<seconds>(const Json::Value& value)
-        {
-            return seconds(value.asUInt());
-        }
-    } // namespace JSON
-} // namespace WBMQTT
 
 TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& schemaFileName)
 {
