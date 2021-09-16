@@ -74,20 +74,6 @@ namespace WBMQTT
     namespace JSON
     {
 
-        template <> inline bool Is<milliseconds>(const Json::Value& value)
-        {
-            return value.isNumeric();
-        }
-
-        template <> inline milliseconds As<milliseconds>(const Json::Value& value)
-        {
-            auto t = value.asInt64();
-            if (t < 0) {
-                t = 0;
-            }
-            return milliseconds(t);
-        }
-
         template <> inline bool Is<system_clock::time_point>(const Json::Value& value)
         {
             return value.isNumeric();
@@ -497,6 +483,9 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
 
     milliseconds minInterval(0);
     JSON::Get(params, "min_interval", minInterval);
+    if (minInterval < milliseconds(0)) {
+        minInterval = milliseconds(0);
+    }
 
     std::vector<TChannelName> channels;
     for (const auto& channelItem : params["channels"]) {
