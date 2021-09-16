@@ -1,3 +1,10 @@
+wb-mqtt-db (2.5.0) stable; urgency=medium
+
+  * Update dependency on libwbmqtt1 to support fixed libmosquitto facade
+    (required for newer mosquitto backports)
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 16 Sep 2021 15:25:51 +0300
+
 wb-mqtt-db (2.4.0) stable; urgency=medium
 
   * max_burst parameter is added to config.
