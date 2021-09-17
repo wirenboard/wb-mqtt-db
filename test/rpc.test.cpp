@@ -209,6 +209,16 @@ TEST_F(TRpcTest, get_records_v1)
     rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}}");
 }
 
+TEST_F(TRpcTest, get_records_v1_min_interval)
+{
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"min_interval\": 95040.00000000001}");
+}
+
 TEST_F(TRpcTest, round)
 {
     TFakeStorage storage(*this);

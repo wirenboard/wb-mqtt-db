@@ -481,11 +481,12 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         }
     }
 
-    milliseconds minInterval(0);
-    JSON::Get(params, "min_interval", minInterval);
-    if (minInterval < milliseconds(0)) {
-        minInterval = milliseconds(0);
+    double minIntervalMs = 0;
+    JSON::Get(params, "min_interval", minIntervalMs);
+    if (minIntervalMs < 0) {
+        minIntervalMs = 0;
     }
+    auto minInterval = std::chrono::milliseconds(int64_t(minIntervalMs));
 
     std::vector<TChannelName> channels;
     for (const auto& channelItem : params["channels"]) {
