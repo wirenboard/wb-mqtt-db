@@ -481,6 +481,12 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         }
     }
 
+    // After moving JSON std::chrono parsers to libwbmqtt1
+    // RPC requests from homeui became broken because
+    // their min_interval value is Number not int and sometimes
+    // comes with fractional part (e.g. 95040.00000000001).
+    // This explicit convertion to double fixes it.
+    // This also will be fixed in homeui though.
     double minIntervalMs = 0;
     JSON::Get(params, "min_interval", minIntervalMs);
     if (minIntervalMs < 0) {
