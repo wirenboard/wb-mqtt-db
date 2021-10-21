@@ -175,7 +175,7 @@
             "min_interval_description": "At most one value per specified time interval will be saved"
         },
         "ru": {
-            "MQTT History Configuration": "Конфигурация истории данных MQTT",
+            "MQTT History Configuration": "История данных MQTT",
             "wb-mqtt-db_description": "Настройки сервиса сохранения и мониторинга данных каналов MQTT",
             "Enable debug logging": "Включить отладочные сообщения",
             "Default request timeout (s)": "Таймаут запроса данных (с)",
