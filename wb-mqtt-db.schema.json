@@ -58,6 +58,7 @@
                     "channels": {
                         "type": "array",
                         "title": "Channels",
+
                         "_format": "table",
                         "propertyOrder": 8,
                         "items": {
@@ -184,7 +185,7 @@
             "Group": "Группа",
             "Group name": "Имя группы",
             "Channels": "Каналы",
-            "Channel pattern": "Канал",
+            "Channel pattern": "Название канала",
             "Number of values to store, per channel": "Максимальное количество записей на канал",
             "Number of values to store, per group": "Максимальное количество записей на группу",
             "Minimum time interval between two data points (s)": "Минимальный интервал записи значений (с)",
