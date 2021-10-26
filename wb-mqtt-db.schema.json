@@ -185,14 +185,14 @@
             "Group": "Группа",
             "Group name": "Имя группы",
             "Channels": "Каналы",
-            "Channel pattern": "Название канала",
+            "Channel pattern": "Канал",
             "Number of values to store, per channel": "Максимальное количество записей на канал",
             "Number of values to store, per group": "Максимальное количество записей на группу",
             "Minimum time interval between two data points (s)": "Минимальный интервал записи значений (с)",
             "min_interval_description": "В течение заданного интервала будет записано не более одного значения",
             "Minimum time interval between two data points with the same value (s)": "Минимальный интервал записи, если значение не изменилось (с)",
             "Maximum burst records count": "Максимальное количество дополнительных записей",
-            "DB file path": "Путь к базе данных"
+            "DB file path": "Путь к файлу базы данных"
         }
     }
 }
