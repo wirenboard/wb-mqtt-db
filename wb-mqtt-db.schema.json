@@ -128,6 +128,7 @@
                     "max_burst": {
                         "type": "number",
                         "title": "Maximum burst records count",
+                        "description": "max_burst_description",
                         "propertyOrder": 7,
                         "default": 30,
                         "minimum": 0,
@@ -173,7 +174,8 @@
         "en": {
             "wb-mqtt-db_description": "Settings of collecting and analizing historical data of MQTT channels",
             "request_timeout_description": "Maximum time to process data request (if no such data in RPC request)",
-            "min_interval_description": "At most one value per specified time interval will be saved"
+            "min_interval_description": "At most one value per specified time interval will be saved",
+            "max_burst_description": "Additional records are made if parameter changes quickly. If maximum count reached additional recording stops until parameter stabilize"
         },
         "ru": {
             "MQTT History Configuration": "История данных MQTT",
@@ -191,8 +193,9 @@
             "Minimum time interval between two data points (s)": "Минимальный интервал записи значений (с)",
             "min_interval_description": "В течение заданного интервала будет записано не более одного значения",
             "Minimum time interval between two data points with the same value (s)": "Минимальный интервал записи, если значение не изменилось (с)",
-            "Maximum burst records count": "Максимальное количество дополнительных записей",
-            "DB file path": "Путь к файлу базы данных"
+            "Maximum burst records count": "Максимальное количество внеочередных записей",
+            "DB file path": "Путь к файлу базы данных",
+            "max_burst_description": "При быстром изменении параметра будут записаны дополнительные значения. После достижения максимального количества, дополнительные записи прекращаются до стабилизации параметра"
         }
     }
 }
