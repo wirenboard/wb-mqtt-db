@@ -1,3 +1,9 @@
+wb-mqtt-db (2.5.2) stable; urgency=medium
+
+  * MQTT db schema translation to Russian
+
+ -- Dmitry Vorobjev <d.vorobjev@wirenboard.ru>  Tue, 02 Nov 2021 14:21:25 +0300
+
 wb-mqtt-db (2.5.1) stable; urgency=medium
 
   * MQTT RPC min_interval entry parsing is fixed
