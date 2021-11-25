@@ -584,9 +584,6 @@ void TMqttDbLoggerMessageHandler::WriteChannel(const TChannelName& channelName,
                                                system_clock::time_point writeTime,
                                                TChannel& channel)
 {
-    if (!channel.ChannelInfo) {
-        channel.ChannelInfo = Storage.CreateChannel(channelName);
-    }
     ChannelWriter->WriteChannel(Storage, channel, writeTime, group.Name);
     channel.Accumulator.Reset();
     channel.LastSaved          = currentTime;
@@ -684,6 +681,11 @@ void TMqttDbLoggerMessageHandler::SaveMessage(const TValueFromMqtt& msg, steady_
             //TODO: It is impossible to get information about retained status from TControlValueEvent. Should we remove the field?
             channelData.Retained           = false;
             channelData.HasUnsavedMessages = true;
+
+            if (!channelData.ChannelInfo) {
+                channelData.ChannelInfo = Storage.CreateChannel(msg.Channel);
+            }
+
             if (channelData.FirstMessage) {
                 if (ShouldStartWithMaxBurst(msg.ControlType)) {
                     channelData.BurstRecords = group.MaxBurstRecords;
