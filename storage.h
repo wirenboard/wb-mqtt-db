@@ -153,7 +153,7 @@ public:
     virtual void GetChannels(IChannelVisitor& visitor) = 0;
 
     virtual void DeleteRecords(TChannelInfo& channel, uint32_t count) = 0;
-    virtual void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) = 0;
+    virtual void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) = 0;
 
 protected:
     PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);

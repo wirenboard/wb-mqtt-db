@@ -133,13 +133,13 @@ TEST_F(TSqliteStorageTest, deleteGroupRows)
     TRecordsVisitor visitor(*this);
 
     Emit() << "## Delete records from Vin";
-    storage.DeleteRecords({vin}, 5);
+    storage.DeleteRecords({*vin}, 5);
     ASSERT_EQ(vin->GetRecordCount(), 4);
     ASSERT_EQ(a1->GetRecordCount(), 9);
     storage.GetRecords(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
 
     Emit() << "## Delete records from Vin and A1";
-    storage.DeleteRecords({vin, a1}, 6);
+    storage.DeleteRecords({*vin, *a1}, 6);
     ASSERT_EQ(vin->GetRecordCount(), 3);
     ASSERT_EQ(a1->GetRecordCount(), 4);
     storage.GetRecords(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));

@@ -455,9 +455,9 @@ void TSqliteStorage::DeleteRecords(TChannelInfo& channel, uint32_t count)
     LOG(Debug) << "Clear channel id = " << channel.GetId();
 }
 
-void TSqliteStorage::DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count)
+void TSqliteStorage::DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count)
 {
-    auto ids = Join(channels.begin(), channels.end(), [](const PChannelInfo& ch) { return ch->GetId();}, ",");
+    auto ids = Join(channels.cbegin(), channels.cend(), [](const TChannelInfo& ch) { return ch.GetId();}, ",");
     std::unordered_map<uint64_t, int> deletedRows;
     {
         std::stringstream queryText;
@@ -476,10 +476,10 @@ void TSqliteStorage::DeleteRecords(const std::vector<PChannelInfo>& channels, ui
         query.exec();
     }
 
-    for (auto& channel: channels) {
-        auto it = deletedRows.find(channel->GetId());
+    for (TChannelInfo& channel: channels) {
+        auto it = deletedRows.find(channel.GetId());
         if (it != deletedRows.end()) {
-            SetRecordCount(*channel, channel->GetRecordCount() - it->second);
+            SetRecordCount(channel, channel.GetRecordCount() - it->second);
         }
     }
 }

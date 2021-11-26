@@ -175,11 +175,13 @@ TChannel& TLoggingGroup::GetChannelData(const TChannelName& channelName)
     return Channels[channelName];
 }
 
-std::vector<PChannelInfo> GetChannelInfos(const TLoggingGroup& group)
+std::vector<std::reference_wrapper<TChannelInfo>> GetChannelInfos(const TLoggingGroup& group)
 {
-    std::vector<PChannelInfo> res;
+    std::vector<std::reference_wrapper<TChannelInfo>> res;
     for (const auto& channel: group.Channels) {
-        res.push_back(channel.second.ChannelInfo);
+        if (channel.second.ChannelInfo) {
+            res.emplace_back(*channel.second.ChannelInfo);
+        }
     }
     return res;
 }
@@ -188,7 +190,9 @@ uint32_t GetRecordCount(const TLoggingGroup& group)
 {
     uint32_t sum = 0;
     for (const auto& channel: group.Channels) {
-        sum += channel.second.ChannelInfo->GetRecordCount();
+        if (channel.second.ChannelInfo) {
+            sum += channel.second.ChannelInfo->GetRecordCount();
+        }
     }
     return sum;
 }

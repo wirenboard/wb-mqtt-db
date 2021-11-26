@@ -5,7 +5,7 @@
 #include <mutex>
 
 /**
- * @brief The class implements Istorage interface for SQLite.
+ * @brief The class implements IStorage interface for SQLite.
  * All methods are threadsafe.
  */
 class TSqliteStorage : public IStorage
@@ -37,15 +37,15 @@ public:
      */
     TSqliteStorage(const std::string& dbFile);
 
-    PChannelInfo CreateChannel(const TChannelName& channelName);
+    PChannelInfo CreateChannel(const TChannelName& channelName) override;
 
     /**
-     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     * @brief Set channel's precision. One must call Commit to finalize writing to storage.
      */
-    void SetChannelPrecision(TChannelInfo& channelInfo, double precision);
+    void SetChannelPrecision(TChannelInfo& channelInfo, double precision) override;
 
     /**
-     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     * @brief Write channel data into storage. One must call Commit to finalize writing.
      */
     void WriteChannel(TChannelInfo&                         channelInfo,
                       const std::string&                    value,
@@ -85,10 +85,10 @@ public:
     void GetChannels(IChannelVisitor& visitor) override;
 
     //! Delete count oldest records of channel
-    void DeleteRecords(TChannelInfo& channel, uint32_t count);
+    void DeleteRecords(TChannelInfo& channel, uint32_t count) override;
 
     //! Delete count oldest records of channels
-    void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count);
+    void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override;
 
     //! Get current DB version
     static int GetDBVersion();
