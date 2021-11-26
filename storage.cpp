@@ -45,11 +45,11 @@ double TChannelInfo::GetPrecision() const
     return Precision;
 }
 
-PChannelInfo IStorage::CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control)
+TChannelInfo& IStorage::CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control)
 {
-    PChannelInfo p(new TChannelInfo(id, device, control));
+    std::shared_ptr<TChannelInfo> p(new TChannelInfo(id, device, control));
     Channels.emplace(TChannelName(device, control), p);
-    return p;
+    return *p;
 }
 
 void IStorage::SetRecordCount(TChannelInfo& channel, int recordCount)
@@ -67,16 +67,12 @@ void IStorage::SetPrecision(TChannelInfo& channel, double precision)
     channel.Precision = precision;
 }
 
-const std::unordered_map<TChannelName, PChannelInfo>& IStorage::GetChannelsPrivate() const
+const std::unordered_map<TChannelName, std::shared_ptr<TChannelInfo>>& IStorage::GetChannelsPrivate() const
 {
     return Channels;
 }
 
-PChannelInfo IStorage::FindChannel(const TChannelName& channelName) const
+TChannelInfo& IStorage::FindChannel(const TChannelName& channelName) const
 {
-    auto it = Channels.find(channelName);
-    if (it != Channels.end()) {
-        return it->second;
-    }
-    return PChannelInfo();
+    return *Channels.at(channelName);
 }

@@ -37,7 +37,7 @@ public:
      */
     TSqliteStorage(const std::string& dbFile);
 
-    PChannelInfo CreateChannel(const TChannelName& channelName) override;
+    TChannelInfo& CreateChannel(const TChannelName& channelName) override;
 
     /**
      * @brief Set channel's precision. One must call Commit to finalize writing to storage.

@@ -14,16 +14,16 @@ namespace
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
         int                              Id;
-        PChannelInfo                     VinChannel;
-        PChannelInfo                     A1Channel;
+        TChannelInfo*                    VinChannel;
+        TChannelInfo*                    A1Channel;
     public:
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture), Id(0)
         {
-            VinChannel = CreateChannel({"wb-adc", "Vin"});
-            A1Channel  = CreateChannel({"wb-adc",  "A1"});
+            VinChannel = &CreateChannel({"wb-adc", "Vin"});
+            A1Channel  = &CreateChannel({"wb-adc",  "A1"});
         }
 
-        PChannelInfo CreateChannel(const TChannelName& channelName) override
+        TChannelInfo& CreateChannel(const TChannelName& channelName) override
         {
             return CreateChannelPrivate(++Id, channelName.Device, channelName.Control);
         }
@@ -87,7 +87,7 @@ namespace
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
             SetLastRecordTime(*VinChannel, std::chrono::system_clock::from_time_t(timegm(&dt)));
-            visitor.ProcessChannel(VinChannel);
+            visitor.ProcessChannel(*VinChannel);
 
             SetRecordCount(*A1Channel, 1000);
             dt.tm_year = 110;
@@ -97,7 +97,7 @@ namespace
             dt.tm_min  = 21;
             dt.tm_sec  = 31;
             SetLastRecordTime(*A1Channel, std::chrono::system_clock::from_time_t(timegm(&dt)));
-            visitor.ProcessChannel(A1Channel);
+            visitor.ProcessChannel(*A1Channel);
         }
 
         void WriteChannel(TChannelInfo&                         channelInfo,
@@ -223,16 +223,16 @@ TEST_F(TRpcTest, get_records_v1_min_interval)
 TEST_F(TRpcTest, round)
 {
     TFakeStorage storage(*this);
-    auto channel = storage.CreateChannel({"wb-adc", "A2"});
+    auto& channel = storage.CreateChannel({"wb-adc", "A2"});
     TJsonRecordsVisitor visitor(1, 100, std::chrono::seconds(1));
-    visitor.ProcessRecord(1, *channel, "10.001", std::chrono::system_clock::time_point(), false);
-    storage.SetChannelPrecision(*channel, 1);
-    visitor.ProcessRecord(2, *channel, "10.001", std::chrono::system_clock::time_point(), false);
-    visitor.ProcessRecord(3, *channel, 10.001, std::chrono::system_clock::time_point(), 1.0, 20.0, false);
-    storage.SetChannelPrecision(*channel, 0.01);
-    visitor.ProcessRecord(4, *channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
-    storage.SetChannelPrecision(*channel, 0.0);
-    visitor.ProcessRecord(4, *channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
+    visitor.ProcessRecord(1, channel, "10.001", std::chrono::system_clock::time_point(), false);
+    storage.SetChannelPrecision(channel, 1);
+    visitor.ProcessRecord(2, channel, "10.001", std::chrono::system_clock::time_point(), false);
+    visitor.ProcessRecord(3, channel, 10.001, std::chrono::system_clock::time_point(), 1.0, 20.0, false);
+    storage.SetChannelPrecision(channel, 0.01);
+    visitor.ProcessRecord(4, channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
+    storage.SetChannelPrecision(channel, 0.0);
+    visitor.ProcessRecord(4, channel, 10.055, std::chrono::system_clock::time_point(), 1.0, 20.012, false);
 
     Json::StreamWriterBuilder writerBuilder;
     writerBuilder["indentation"] = "  ";

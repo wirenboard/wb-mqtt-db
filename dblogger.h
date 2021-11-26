@@ -38,10 +38,10 @@ struct TAccumulator
     double Average() const;
 };
 
-//! Information about speceific channel
+//! Information about specific channel
 struct TChannel
 {
-    PChannelInfo ChannelInfo;
+    TChannelInfo& ChannelInfo;
 
     std::string LastValue;
 
@@ -67,6 +67,8 @@ struct TChannel
 
     //! A message from the channel is received for the first time
     bool FirstMessage = true;
+
+    TChannel(TChannelInfo& channelInfo);
 };
 
 struct TValueFromMqtt
@@ -88,7 +90,7 @@ struct TValueFromMqtt
  * @param msg message from MQTT
  * @param isNumber flag indicating that message contains number
  */
-void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNumber);
+double UpdatePrecision(double precision, const TValueFromMqtt& msg, bool isNumber);
 
 //! A group of channels with storage settings
 struct TLoggingGroup
@@ -123,7 +125,7 @@ struct TLoggingGroup
     //! Check if device/control matches any of MqttTopicPatterns
     bool MatchPatterns(const TChannelName& channelName) const;
 
-    TChannel& GetChannelData(const TChannelName& channelName);
+    TChannel& GetChannelData(const TChannelName& channelName, IStorage& storage);
 };
 
 uint32_t GetRecordCount(const TLoggingGroup& group);

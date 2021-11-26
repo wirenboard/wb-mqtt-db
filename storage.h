@@ -67,8 +67,6 @@ public:
     double GetPrecision() const;
 };
 
-typedef std::shared_ptr<TChannelInfo> PChannelInfo;
-
 class IRecordsVisitor
 {
 public:
@@ -94,7 +92,7 @@ class IChannelVisitor
 public:
     virtual ~IChannelVisitor() = default;
 
-    virtual void ProcessChannel(PChannelInfo channel) = 0;
+    virtual void ProcessChannel(TChannelInfo& channel) = 0;
 };
 
 /**
@@ -105,7 +103,7 @@ class IStorage
 public:
     virtual ~IStorage() = default;
 
-    virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
+    virtual TChannelInfo& CreateChannel(const TChannelName& channelName) = 0;
 
     /**
      * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
@@ -156,13 +154,15 @@ public:
     virtual void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) = 0;
 
 protected:
-    PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
+    TChannelInfo& CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
     void SetRecordCount(TChannelInfo& channel, int recordCount);
     void SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time);
     void SetPrecision(TChannelInfo& channel, double precision);
-    const std::unordered_map<TChannelName, PChannelInfo>& GetChannelsPrivate() const;
-    PChannelInfo FindChannel(const TChannelName& channelName) const;
+    const std::unordered_map<TChannelName, std::shared_ptr<TChannelInfo>>& GetChannelsPrivate() const;
+    
+    //! Find channel by name. Throws std::out_of_range if nothing found
+    TChannelInfo& FindChannel(const TChannelName& channelName) const;
 
 private:
-    std::unordered_map<TChannelName, PChannelInfo> Channels;
+    std::unordered_map<TChannelName, std::shared_ptr<TChannelInfo>> Channels;
 };

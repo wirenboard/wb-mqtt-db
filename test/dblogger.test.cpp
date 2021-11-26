@@ -24,7 +24,7 @@ namespace
         {
         }
 
-        PChannelInfo CreateChannel(const TChannelName& channelName) override
+        TChannelInfo& CreateChannel(const TChannelName& channelName) override
         {
             Fixture.Emit() << "Create channel " << channelName;
             return CreateChannelPrivate(ChannelId++, channelName.Device, channelName.Control);
@@ -93,7 +93,7 @@ namespace
                           system_clock::time_point writeTime,
                           const std::string&       groupName) override
         {
-            Fixture.Emit() << "Write \"" << groupName << "\" " << channel.ChannelInfo->GetName()
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channel.ChannelInfo.GetName()
                            << " " << duration_cast<milliseconds>(writeTime - StartTime).count();
             Fixture.Emit() << "  Last value: " << channel.LastValue;
             Fixture.Emit() << "  Changed: " << channel.Changed;
@@ -456,46 +456,34 @@ TEST_F(TDBLoggerTest, save_precision)
 TEST(TPrecisionTest, find_precision)
 {
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Precision = 0.01;
-        UpdatePrecision(channelData, msg, true);
-        ASSERT_EQ(channelData.Precision, 0.01);
+        ASSERT_EQ(UpdatePrecision(0.0, msg, true), 0.01);
     }
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Precision = 0.01;
-        UpdatePrecision(channelData, msg, false);
-        ASSERT_EQ(channelData.Precision, 0.01);
+        ASSERT_EQ(UpdatePrecision(0.0, msg, false), 0.01);
     }
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Value = "100";
-        UpdatePrecision(channelData, msg, true);
-        ASSERT_EQ(channelData.Precision, 1.0);
+        ASSERT_EQ(UpdatePrecision(0.0, msg, true), 1.0);
     }
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Value = "100";
-        UpdatePrecision(channelData, msg, false);
-        ASSERT_EQ(channelData.Precision, 0.0);
+        ASSERT_EQ(UpdatePrecision(0.0, msg, false), 0.0);
     }
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Value = "100.1";
-        UpdatePrecision(channelData, msg, true);
-        ASSERT_DOUBLE_EQ(channelData.Precision, 0.1);
+        ASSERT_DOUBLE_EQ(UpdatePrecision(0.0, msg, true), 0.1);
     }
     {
-        TChannel       channelData;
         TValueFromMqtt msg;
         msg.Value = "100.001";
-        UpdatePrecision(channelData, msg, true);
-        ASSERT_DOUBLE_EQ(channelData.Precision, 0.001);
+        ASSERT_DOUBLE_EQ(UpdatePrecision(0.0, msg, true), 0.001);
     }
 }
 
@@ -682,41 +670,4 @@ TEST_F(TDBLoggerTest, burstSwitch)
     // Vin: last save = 2000 ms
     StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
     ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
-}
-
-TEST_F(TDBLoggerTest, burstSwitchAndValue)
-{
-    // If max_burst is non zero, TDBLogger will start writing discrete channels before analog channels
-    // It will lead to group records count calculation on cache with channels with ChannelInfo==nullptr
-    // So we will get a segfault
-    // The test check crash fix
-
-    TLoggerCache cache;
-
-    TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
-    group.UnchangedInterval = seconds(3);
-    group.MaxBurstRecords   = 3;
-    group.MaxRecords        = 100;
-    group.ControlPatterns.push_back({"+", "+"});
-    group.Name = "all";
-    cache.Groups.push_back(group);
-
-    TFakeStorage storage(*this);
-
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
-    auto startSteadyTime = steadyTime;
-    auto nextSaveTime    = steadyTime;
-
-    std::queue<TValueFromMqtt>  messages;
-    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
-    handler.Start(startSteadyTime);
-
-    messages.push({{"wb-adc", "A1"}, "10.0", "", 0.0, systemTime});
-    for (size_t i = 0; i < 5; ++i) {
-        messages.push({{"wb-adc", "Vin"}, "1", "switch", 0.0, systemTime});
-    }
-    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
-    // Must not crash
 }

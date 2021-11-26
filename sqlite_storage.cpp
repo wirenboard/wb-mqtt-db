@@ -205,13 +205,13 @@ void TSqliteStorage::Load()
         rowCountQuery.reset();
         rowCountQuery.bind(1, query.getColumn(0).getInt64());
         rowCountQuery.executeStep();
-        auto channel = CreateChannelPrivate(query.getColumn(0).getInt64(), query.getColumn(1), query.getColumn(2));
-        SetRecordCount(*channel, rowCountQuery.getColumn(0));
+        auto& channel = CreateChannelPrivate(query.getColumn(0).getInt64(), query.getColumn(1), query.getColumn(2));
+        SetRecordCount(channel, rowCountQuery.getColumn(0));
         if (!rowCountQuery.getColumn(1).isNull()) {
-            SetLastRecordTime(*channel, std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
+            SetLastRecordTime(channel, std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
         }
         if (!query.getColumn(3).isNull()) {
-            SetPrecision(*channel, query.getColumn(3).getDouble());
+            SetPrecision(channel, query.getColumn(3).getDouble());
         }
     }
 }
@@ -333,7 +333,7 @@ void TSqliteStorage::Commit()
     }
 }
 
-PChannelInfo TSqliteStorage::CreateChannel(const TChannelName& channelName)
+TChannelInfo& TSqliteStorage::CreateChannel(const TChannelName& channelName)
 {
     LOG(Info) << "Creating channel " << channelName.Device << "/" << channelName.Control;
 
@@ -404,14 +404,13 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     int param_num = 0;
     for (const auto& channel: channels) {
         int  channelId = -1;
-        auto pChannel  = FindChannel(channel);
-        if (pChannel) {
-            channelId = pChannel->GetId();
-        }
+        try {
+            channelId = FindChannel(channel).GetId();
+        } catch (...) {}
         query.bind(++param_num, channelId);
     }
 
-    std::unordered_map<int, PChannelInfo> channelIdToNameMap;
+    std::unordered_map<int, std::shared_ptr<TChannelInfo>> channelIdToNameMap;
     for(const auto& ch: GetChannelsPrivate()) {
         channelIdToNameMap.insert({ch.second->GetId(), ch.second});
     }
@@ -440,7 +439,7 @@ void TSqliteStorage::GetChannels(IChannelVisitor& visitor)
 {
     std::lock_guard<std::mutex> lg(Mutex);
     for (const auto& channel : GetChannelsPrivate()) {
-        visitor.ProcessChannel(channel.second);
+        visitor.ProcessChannel(*channel.second);
     }
 }
 
