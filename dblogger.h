@@ -81,16 +81,16 @@ struct TValueFromMqtt
 };
 
 /**
- * @brief Update Precision of the channel according to message received from MQTT.
+ * @brief Update Precision of a channel according to message received from MQTT.
  *        A value from /meta/precision is used if present.
  *        If /meta/precision is missing and isNumber == true,
  *        try to set precision according to value's fractional part.
  * 
- * @param channelData channel to update
+ * @param actualPrecision precision of a channel
  * @param msg message from MQTT
  * @param isNumber flag indicating that message contains number
  */
-double UpdatePrecision(double precision, const TValueFromMqtt& msg, bool isNumber);
+double UpdatePrecision(double actualPrecision, const TValueFromMqtt& msg, bool isNumber);
 
 //! A group of channels with storage settings
 struct TLoggingGroup
