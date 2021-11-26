@@ -30,7 +30,7 @@ namespace
             return CreateChannelPrivate(ChannelId++, channelName.Device, channelName.Control);
         }
 
-        void SetChannelPrecision(TChannelInfo& channelInfo, double precision)
+        void SetChannelPrecision(TChannelInfo& channelInfo, double precision) override
         {
             if (channelInfo.GetPrecision() != precision) {
                 Fixture.Emit() << "Set precision for " << channelInfo.GetName() << " to " << precision;
@@ -43,7 +43,7 @@ namespace
                           const std::string&                    minimum,
                           const std::string&                    maximum,
                           bool                                  retained,
-                          std::chrono::system_clock::time_point time)
+                          std::chrono::system_clock::time_point time) override
         {
             Fixture.Emit() << "Storage data:";
             Fixture.Emit() << "  Value: " << value;
@@ -52,7 +52,7 @@ namespace
             HasRecords = true;
         }
 
-        void Commit()
+        void Commit() override
         {
             if (HasRecords) {
                 Fixture.Emit() << "Commit";
@@ -66,13 +66,13 @@ namespace
                         std::chrono::system_clock::time_point endTime,
                         int64_t                               startId,
                         uint32_t                              maxRecords,
-                        std::chrono::milliseconds             minInterval)
+                        std::chrono::milliseconds             minInterval) override
         {
         }
 
-        void GetChannels(IChannelVisitor& visitor) {}
-        void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
-        void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
+        void GetChannels(IChannelVisitor& visitor) override {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) override {}
+        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override {}
     };
 
     class TFakeChannelWriter: public IChannelWriter
@@ -682,4 +682,41 @@ TEST_F(TDBLoggerTest, burstSwitch)
     // Vin: last save = 2000 ms
     StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
     ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+}
+
+TEST_F(TDBLoggerTest, burstSwitchAndValue)
+{
+    // If max_burst is non zero, TDBLogger will start writing discrete channels before analog channels
+    // It will lead to group records count calculation on cache with channels with ChannelInfo==nullptr
+    // So we will get a segfault
+    // The test check crash fix
+
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval   = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.MaxBurstRecords   = 3;
+    group.MaxRecords        = 100;
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime      = system_clock::now();
+    auto steadyTime      = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime    = steadyTime;
+
+    std::queue<TValueFromMqtt>  messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    messages.push({{"wb-adc", "A1"}, "10.0", "", 0.0, systemTime});
+    for (size_t i = 0; i < 5; ++i) {
+        messages.push({{"wb-adc", "Vin"}, "1", "switch", 0.0, systemTime});
+    }
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
+    // Must not crash
 }

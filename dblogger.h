@@ -126,7 +126,6 @@ struct TLoggingGroup
     TChannel& GetChannelData(const TChannelName& channelName);
 };
 
-std::vector<PChannelInfo> GetChannelInfos(const TLoggingGroup& group);
 uint32_t GetRecordCount(const TLoggingGroup& group);
 
 struct TLoggerCache

@@ -28,7 +28,7 @@ namespace
             return CreateChannelPrivate(++Id, channelName.Device, channelName.Control);
         }
 
-        void SetChannelPrecision(TChannelInfo& channelInfo, double precision)
+        void SetChannelPrecision(TChannelInfo& channelInfo, double precision) override
         {
             SetPrecision(channelInfo, precision);
         }
@@ -39,7 +39,7 @@ namespace
                         std::chrono::system_clock::time_point endTime,
                         int64_t                               startId,
                         uint32_t                              maxRecords,
-                        std::chrono::milliseconds             minInterval)
+                        std::chrono::milliseconds             minInterval) override
         {
             Fixture.Emit() << "Storage GetRecords";
             for (const auto& channel : channels) {
@@ -74,7 +74,7 @@ namespace
                                   true);
         }
 
-        void GetChannels(IChannelVisitor& visitor)
+        void GetChannels(IChannelVisitor& visitor) override
         {
             tm dt;
             memset(&dt, 0, sizeof(tm));
@@ -105,10 +105,11 @@ namespace
                           const std::string&                    minimum,
                           const std::string&                    maximum,
                           bool                                  retained,
-                          std::chrono::system_clock::time_point time) {}
-        void Commit() {}
-        void DeleteRecords(TChannelInfo& channel, uint32_t count) {}
-        void DeleteRecords(const std::vector<PChannelInfo>& channels, uint32_t count) {}
+                          std::chrono::system_clock::time_point time) override {}
+
+        void Commit() override {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) override {}
+        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override {}
     };
 
     class TFakeMqttRpcServer: public WBMQTT::TMqttRpcServer
