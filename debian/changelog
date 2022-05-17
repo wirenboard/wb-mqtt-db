@@ -1,3 +1,9 @@
+wb-mqtt-db (2.5.4) stable; urgency=medium
+
+  * Do not restart service with invalid config
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Tue, 17 May 2022 12:30:09 +0500
+
 wb-mqtt-db (2.5.3) stable; urgency=medium
 
   * Crash on first start with max_burst parameter is fixed
