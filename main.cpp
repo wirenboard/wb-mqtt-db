@@ -10,6 +10,10 @@
 #include <wblib/wbmqtt.h>
 #include <wblib/rpc.h>
 
+// From LSB
+#define EXIT_INVALIDARGUMENT 2 // Invalid or excess arguments
+#define EXIT_NOTCONFIGURED 6   // The program is not configured
+
 using namespace std;
 using namespace std::chrono;
 
@@ -76,7 +80,7 @@ namespace
             case '?':
             default:
                 PrintUsage();
-                exit(2);
+                exit(EXIT_INVALIDARGUMENT);
             }
         }
 
@@ -112,7 +116,7 @@ namespace
         default:
             cout << "Invalid -d parameter value " << debugLevel << endl;
             PrintUsage();
-            exit(2);
+            exit(EXIT_INVALIDARGUMENT);
         }
 
         if (optind < argc) {
@@ -161,10 +165,17 @@ int main(int argc, char* argv[])
         cerr << "Error: DRIVER_STOP_TIMEOUT_S" << endl;
         exit(2);
     });
-    WBMQTT::SignalHandling::Start();
 
+    TMQTTDBLoggerConfig config;
     try {
-        auto config = LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json");
+        config = LoadConfig(configFileName, "/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json");
+    } catch (const std::exception& e) {
+        Error.Log() << e.what();
+        return EXIT_NOTCONFIGURED;
+    }
+
+    WBMQTT::SignalHandling::Start();
+    try {
         auto mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
         auto backend = WBMQTT::NewDriverBackend(mqttClient);
         auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId(APP_NAME).SetBackend(backend));
@@ -184,8 +195,8 @@ int main(int argc, char* argv[])
     } catch (const std::exception& e) {
         Error.Log() << e.what();
         WBMQTT::SignalHandling::Stop();
-        return 2;
+        return EXIT_FAILURE;
     }
     WBMQTT::SignalHandling::Wait();
-    return 0;
+    return EXIT_SUCCESS;
 }
