@@ -50,7 +50,7 @@ TEST_OBJECTS=$(TEST_SOURCES:.cpp=.o)
 TEST_BIN=wb-mqtt-db-test
 TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all : $(DB_BIN)
 

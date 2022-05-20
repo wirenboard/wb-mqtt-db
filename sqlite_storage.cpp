@@ -96,8 +96,6 @@ namespace
 
     void AddCommonWhereClause(string& queryStr, const std::vector<TChannelName>& channels)
     {
-        queryStr += "SELECT uid, channel, value, timestamp, MIN(min), MAX(max), retained, AVG(value) \
-                     FROM data INDEXED BY data_topic_timestamp WHERE ";
         if (!channels.empty()) {
             queryStr += "channel IN ( ";
             queryStr += Join(channels.begin(), channels.end(), [] (const auto&) {return '?';}, ",");
@@ -494,16 +492,14 @@ void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor&                     
     string queryStr;
 
     if (!withoutAverage.empty()) {
-        AddWithoutAverageQuery(queryStr, channels);
+        AddWithoutAverageQuery(queryStr, withoutAverage);
     }
 
     if (!withAverage.empty()) {
         if (!queryStr.empty()) {
             queryStr += " UNION ALL ";
-            AddWithAverageQuery(queryStr, channels);
-        } else {
-            AddWithAverageQuery(queryStr, channels);
         }
+        AddWithAverageQuery(queryStr, withAverage);
     }
 
     queryStr += " ORDER BY uid ASC LIMIT ?";
@@ -598,6 +594,7 @@ std::unordered_map<TChannelName, int> TSqliteStorage::GetRecordsCount(std::vecto
 
     queryStr = "SELECT COUNT(*), channel FROM data INDEXED BY data_topic_timestamp WHERE ";
     AddCommonWhereClause(queryStr, channels);
+    queryStr += " GROUP BY channel";
 
     std::lock_guard<std::mutex> lg(Mutex);
     SQLite::Statement query(*DB, queryStr);
