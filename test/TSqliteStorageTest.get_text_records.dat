@@ -29,27 +29,13 @@ Record id: 6
 	Value: 192.168.1.1
 	Time: 20
 	Retain: 0
-Record id: 7
-	Channel: test/test3[3]
-	Value: 1
-	Time: 5
-	Retain: 1
-Record id: 8
-	Channel: test/test3[3]
-	Average: 12
-	Time: 10
-	Min: 10
-	Max: 12
-	Retain: 0
-Record id: 9
-	Channel: test/test3[3]
-	Average: -165.777554
-	Time: 20
-	Min: 1
-	Max: 100
-	Retain: 0
 
-## Average values
+## Average values, but send all
+Record id: 1
+	Channel: test/test[1]
+	Value: industrial
+	Time: 5
+	Retain: 0
 Record id: 2
 	Channel: test/test[1]
 	Value: industrial
@@ -60,6 +46,11 @@ Record id: 3
 	Value: industrial
 	Time: 20
 	Retain: 0
+Record id: 4
+	Channel: test/test2[2]
+	Value: 192.168.1.1
+	Time: 5
+	Retain: 1
 Record id: 5
 	Channel: test/test2[2]
 	Value: 192.168.1.1
@@ -70,17 +61,15 @@ Record id: 6
 	Value: 192.168.1.1
 	Time: 20
 	Retain: 0
-Record id: 8
-	Channel: test/test3[3]
-	Average: 6.5
-	Time: 10
-	Min: 10
-	Max: 12
-	Retain: 0
-Record id: 9
-	Channel: test/test3[3]
-	Average: -165.777554
+
+## Average values
+Record id: 3
+	Channel: test/test[1]
+	Value: industrial
 	Time: 20
-	Min: 1
-	Max: 100
+	Retain: 0
+Record id: 6
+	Channel: test/test2[2]
+	Value: 192.168.1.1
+	Time: 20
 	Retain: 0

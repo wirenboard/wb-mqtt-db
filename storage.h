@@ -10,7 +10,7 @@
 class IStorage;
 
 /**
- * @brief Device name and control name pair for identificaition of a control
+ * @brief Device name and control name pair for identification of a control
  */
 struct TChannelName
 {
@@ -41,7 +41,7 @@ namespace std
 std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
 
 /**
- * @brief Device name and control name pair for identificaition of a control
+ * @brief Device name and control name pair for identification of a control
  */
 class TChannelInfo
 {
@@ -108,12 +108,12 @@ public:
     virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
 
     /**
-     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     * @brief Set channel's precision. One must call Commit to finalize writing to storage.
      */
     virtual void SetChannelPrecision(TChannelInfo& channelInfo, double precision) = 0;
 
     /**
-     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     * @brief Write channel data into storage. One must call Commit to finalize writing.
      */
     virtual void WriteChannel(TChannelInfo&                         channelInfo,
                               const std::string&                    value,
@@ -135,7 +135,7 @@ public:
      * @param channels get recods only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
-     * @param startId get records stored starting from the id
+     * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
      * @param minInterval minimum time between records
      */

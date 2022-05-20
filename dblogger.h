@@ -38,7 +38,7 @@ struct TAccumulator
     double Average() const;
 };
 
-//! Information about speceific channel
+//! Information about specific channel
 struct TChannel
 {
     PChannelInfo ChannelInfo;
@@ -190,7 +190,7 @@ public:
     void Start(std::chrono::steady_clock::time_point currentTime);
 
     /**
-     * @brief Store messages or avegare values for next call
+     * @brief Store messages or average values for next call
      * 
      * @return next time to call HandleMessages
      */

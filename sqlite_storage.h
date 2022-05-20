@@ -29,6 +29,33 @@ class TSqliteStorage : public IStorage
 
     void Load();
 
+
+    void GetRecordsWithoutAverage(IRecordsVisitor&                      visitor,
+                                  const std::vector<TChannelName>&      channels,
+                                  std::chrono::system_clock::time_point startTime,
+                                  std::chrono::system_clock::time_point endTime,
+                                  int64_t                               startId,
+                                  uint32_t                              maxRecords);
+
+    void GetRecordsWithAverage(IRecordsVisitor&                      visitor,
+                               const std::vector<TChannelName>&      channels,
+                               std::chrono::system_clock::time_point startTime,
+                               std::chrono::system_clock::time_point endTime,
+                               int64_t                               startId,
+                               uint32_t                              maxRecords,
+                               std::chrono::milliseconds             minInterval);
+
+    std::unordered_map<TChannelName, int> GetRecordsCount(std::vector<TChannelName>             channels,
+                                                          std::chrono::system_clock::time_point startTime,
+                                                          std::chrono::system_clock::time_point endTime);
+
+    int BindParams(SQLite::Statement&                    query,
+                   int                                   param_num,
+                   const std::vector<TChannelName>&      channels,
+                   std::chrono::system_clock::time_point startTime,
+                   std::chrono::system_clock::time_point endTime,
+                   int64_t                               startId);
+
 public:
     /**
      * @brief Construct a new TSqliteStorage object
@@ -64,10 +91,10 @@ public:
      * record
      *
      * @param visitor an object
-     * @param channels get recods only for these channels
+     * @param channels get records only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
-     * @param startId get records stored starting from the id
+     * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
      * @param minInterval minimum time between records
      */

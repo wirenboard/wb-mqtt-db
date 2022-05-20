@@ -21,6 +21,15 @@ namespace
 
     const int UNDEFINED_ID = -1;
 
+    const int UID_COLUMN = 0;
+    const int CHANNEL_COLUMN = 1;
+    const int VALUE_COLUMN = 2;
+    const int TIMESTAMP_COLUMN = 3;
+    const int MIN_COLUMN = 4;
+    const int MAX_COLUMN = 5;
+    const int RETAINED_COLUMN = 6;
+    const int AVERAGE_VALUE_COLUMN = 7;
+
     string BackupFileName(const string& filename)
     {
         return filename + DB_BACKUP_FILE_EXTENSION;
@@ -58,32 +67,61 @@ namespace
 
     bool CallVisitor(IRecordsVisitor& visitor, SQLite::Statement& query, bool withAverage, const TChannelInfo& channel)
     {
-        int  recordId = query.getColumn(0).getInt();
-        bool retain   = (query.getColumn(6).getInt() > 0);
-        system_clock::time_point timestamp(milliseconds(query.getColumn(3).getInt64()));
+        int  recordId = query.getColumn(UID_COLUMN).getInt();
+        bool retain   = (query.getColumn(RETAINED_COLUMN).getInt() > 0);
+        system_clock::time_point timestamp(milliseconds(query.getColumn(TIMESTAMP_COLUMN).getInt64()));
 
-        if (withAverage && !isNumber(query.getColumn(7).getString())) {
+        if (withAverage && !isNumber(query.getColumn(VALUE_COLUMN).getString())) {
             return visitor.ProcessRecord(recordId,
                                          channel,
-                                         query.getColumn(7).getString(),
+                                         query.getColumn(VALUE_COLUMN).getString(),
                                          timestamp,
                                          retain);
         }
-        if (query.getColumn(5).isNull()) {
+        if (query.getColumn(MAX_COLUMN).isNull()) {
             return visitor.ProcessRecord(recordId,
                                          channel,
-                                         query.getColumn(2).getString(),
+                                         query.getColumn(AVERAGE_VALUE_COLUMN).getString(),
                                          timestamp,
                                          retain);
         }
         return visitor.ProcessRecord(recordId,
                                      channel,
-                                     query.getColumn(2).getDouble(),
+                                     query.getColumn(withAverage ? AVERAGE_VALUE_COLUMN : VALUE_COLUMN).getDouble(),
                                      timestamp,
-                                     query.getColumn(4).getDouble(),
-                                     query.getColumn(5).getDouble(),
+                                     query.getColumn(MIN_COLUMN).getDouble(),
+                                     query.getColumn(MAX_COLUMN).getDouble(),
                                      retain);
     }
+
+    void AddCommonWhereClause(string& queryStr, const std::vector<TChannelName>& channels)
+    {
+        queryStr += "SELECT uid, channel, value, timestamp, MIN(min), MAX(max), retained, AVG(value) \
+                     FROM data INDEXED BY data_topic_timestamp WHERE ";
+        if (!channels.empty()) {
+            queryStr += "channel IN ( ";
+            queryStr += Join(channels.begin(), channels.end(), [] (const auto&) {return '?';}, ",");
+            queryStr += ") AND ";
+        }
+        queryStr += "timestamp > ? AND timestamp < ?";
+    }
+
+    void AddWithAverageQuery(string& queryStr, const std::vector<TChannelName>& channels)
+    {
+        queryStr += "SELECT uid, channel, value, timestamp, MIN(min), MAX(max), retained, AVG(value) \
+                     FROM data INDEXED BY data_topic_timestamp WHERE ";
+        AddCommonWhereClause(queryStr, channels);
+        queryStr += " AND uid > ? GROUP BY (timestamp * ? / 86400000), channel";
+    }
+
+    void AddWithoutAverageQuery(string& queryStr, const std::vector<TChannelName>& channels)
+    {
+        queryStr += "SELECT uid, channel, value, timestamp, min, max, retained, value \
+                     FROM data INDEXED BY data_topic_timestamp WHERE ";
+        AddCommonWhereClause(queryStr, channels);
+        queryStr += " AND uid > ?";
+    }
+
 } // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
@@ -371,37 +409,21 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
                                 uint32_t                              maxRecords,
                                 std::chrono::milliseconds             minInterval)
 {
-    // version 3.7 can't always figure out to use the proper index
-    string queryStr;
 
-    bool withAverage = true;
     if (minInterval.count() > 0) {
-        queryStr = "SELECT uid, channel, AVG(value), timestamp, MIN(min), MAX(max), retained, value \
-                    FROM data INDEXED BY data_topic_timestamp WHERE ";
+        GetRecordsWithAverage(visitor, channels, startTime, endTime, startId, maxRecords, minInterval);
     } else {
-        withAverage = false;
-        queryStr = "SELECT uid, channel, value, timestamp, min, max, retained \
-                    FROM data INDEXED BY data_topic_timestamp WHERE ";
+        GetRecordsWithoutAverage(visitor, channels, startTime, endTime, startId, maxRecords);
     }
+}
 
-    if (!channels.empty()) {
-        queryStr += "channel IN ( ";
-        queryStr += Join(channels.begin(), channels.end(), [] (const auto&) {return '?';}, ",");
-        queryStr += ") AND ";
-    }
-
-    queryStr += "timestamp > ? AND timestamp < ? AND uid > ? ";
-
-    if (minInterval.count() > 0) {
-        queryStr += " GROUP BY (timestamp * ? / 86400000), channel ";
-    }
-
-    queryStr += " ORDER BY uid ASC LIMIT ?";
-
-    std::lock_guard<std::mutex> lg(Mutex);
-    SQLite::Statement query(*DB, queryStr);
-
-    int param_num = 0;
+int TSqliteStorage::BindParams(SQLite::Statement&                    query,
+                               int                                   param_num,
+                               const std::vector<TChannelName>&      channels,
+                               std::chrono::system_clock::time_point startTime,
+                               std::chrono::system_clock::time_point endTime,
+                               int64_t                               startId)
+{
     for (const auto& channel: channels) {
         int  channelId = -1;
         auto pChannel  = FindChannel(channel);
@@ -411,16 +433,95 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         query.bind(++param_num, channelId);
     }
 
+    query.bind(++param_num, duration_cast<milliseconds>(startTime.time_since_epoch()).count());
+    query.bind(++param_num, duration_cast<milliseconds>(endTime.time_since_epoch()).count());
+    query.bind(++param_num, startId);
+    return param_num;
+}
+
+void TSqliteStorage::GetRecordsWithoutAverage(IRecordsVisitor&                      visitor,
+                                              const std::vector<TChannelName>&      channels,
+                                              std::chrono::system_clock::time_point startTime,
+                                              std::chrono::system_clock::time_point endTime,
+                                              int64_t                               startId,
+                                              uint32_t                              maxRecords)
+{
+    string queryStr;
+    AddWithoutAverageQuery(queryStr, channels);
+    queryStr += " ORDER BY uid ASC LIMIT ?";
+
+    std::lock_guard<std::mutex> lg(Mutex);
+
     std::unordered_map<int, PChannelInfo> channelIdToNameMap;
     for(const auto& ch: GetChannelsPrivate()) {
         channelIdToNameMap.insert({ch.second->GetId(), ch.second});
     }
 
-    query.bind(++param_num, duration_cast<milliseconds>(startTime.time_since_epoch()).count());
-    query.bind(++param_num, duration_cast<milliseconds>(endTime.time_since_epoch()).count());
-    query.bind(++param_num, startId);
+    SQLite::Statement query(*DB, queryStr);
+    int param_num = BindParams(query, 0, channels, startTime, endTime, startId);
+    query.bind(++param_num, maxRecords);
 
-    if (minInterval.count() > 0) {
+    while (query.executeStep()) {
+        int channelId(query.getColumn(CHANNEL_COLUMN).getInt());
+        if (!CallVisitor(visitor, query, false, *channelIdToNameMap[channelId])) {
+            return;
+        }
+    }
+}
+
+void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor&                      visitor,
+                                           const std::vector<TChannelName>&      channels,
+                                           std::chrono::system_clock::time_point startTime,
+                                           std::chrono::system_clock::time_point endTime,
+                                           int64_t                               startId,
+                                           uint32_t                              maxRecords,
+                                           std::chrono::milliseconds             minInterval)
+{
+
+    auto recordsCount = GetRecordsCount(channels, startTime, endTime);
+    std::vector<TChannelName> withAverage;
+    std::vector<TChannelName> withoutAverage;
+
+    int maxNotAveragedRecords = (((endTime - startTime) / minInterval) * 1.1);
+    for(const auto& ch: GetRecordsCount(channels, startTime, endTime)) {
+        if (ch.second > maxNotAveragedRecords) {
+            withAverage.emplace_back(ch.first);
+        } else {
+            withoutAverage.emplace_back(ch.first);
+        }
+    }
+
+    string queryStr;
+
+    if (!withoutAverage.empty()) {
+        AddWithoutAverageQuery(queryStr, channels);
+    }
+
+    if (!withAverage.empty()) {
+        if (!queryStr.empty()) {
+            queryStr += " UNION ALL ";
+            AddWithAverageQuery(queryStr, channels);
+        } else {
+            AddWithAverageQuery(queryStr, channels);
+        }
+    }
+
+    queryStr += " ORDER BY uid ASC LIMIT ?";
+
+    std::lock_guard<std::mutex> lg(Mutex);
+    std::unordered_map<int, PChannelInfo> channelIdToNameMap;
+    for(const auto& ch: GetChannelsPrivate()) {
+        channelIdToNameMap.insert({ch.second->GetId(), ch.second});
+    }
+
+    SQLite::Statement query(*DB, queryStr);
+
+    int param_num = 0;
+    if (!withoutAverage.empty()) {
+        param_num = BindParams(query, param_num, withoutAverage, startTime, endTime, startId);
+    }
+    if (!withAverage.empty()) {
+        param_num = BindParams(query, param_num, withAverage, startTime, endTime, startId);
         int dayFraction = 86400000 / minInterval.count(); // ms in day
         LOG(Debug) << "day: fraction :" << dayFraction;
         query.bind(++param_num, dayFraction);
@@ -429,8 +530,8 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     query.bind(++param_num, maxRecords);
 
     while (query.executeStep()) {
-        int channelId(query.getColumn(1).getInt());
-        if (!CallVisitor(visitor, query, withAverage, *channelIdToNameMap[channelId])) {
+        int channelId(query.getColumn(CHANNEL_COLUMN).getInt());
+        if (!CallVisitor(visitor, query, true, *channelIdToNameMap[channelId])) {
             return;
         }
     }
@@ -487,4 +588,43 @@ void TSqliteStorage::DeleteRecords(const std::vector<std::reference_wrapper<TCha
 int TSqliteStorage::GetDBVersion()
 {
     return WB_DB_VERSION;
+}
+
+std::unordered_map<TChannelName, int> TSqliteStorage::GetRecordsCount(std::vector<TChannelName>             channels,
+                                                                      std::chrono::system_clock::time_point startTime,
+                                                                      std::chrono::system_clock::time_point endTime)
+{
+    string queryStr;
+
+    queryStr = "SELECT COUNT(*), channel FROM data INDEXED BY data_topic_timestamp WHERE ";
+    AddCommonWhereClause(queryStr, channels);
+
+    std::lock_guard<std::mutex> lg(Mutex);
+    SQLite::Statement query(*DB, queryStr);
+
+    std::unordered_map<TChannelName, int> res;
+    int param_num = 0;
+    for (const auto& channel: channels) {
+        res[channel] = 0;
+        int  channelId = -1;
+        auto pChannel  = FindChannel(channel);
+        if (pChannel) {
+            channelId = pChannel->GetId();
+        }
+        query.bind(++param_num, channelId);
+    }
+
+    std::unordered_map<int, PChannelInfo> channelIdToNameMap;
+    for(const auto& ch: GetChannelsPrivate()) {
+        channelIdToNameMap.insert({ch.second->GetId(), ch.second});
+    }
+
+    query.bind(++param_num, duration_cast<milliseconds>(startTime.time_since_epoch()).count());
+    query.bind(++param_num, duration_cast<milliseconds>(endTime.time_since_epoch()).count());
+
+    while (query.executeStep()) {
+        int channelId(query.getColumn(CHANNEL_COLUMN).getInt());
+        res[channelIdToNameMap[channelId]->GetName()] = query.getColumn(0).getInt();
+    }
+    return res;
 }
