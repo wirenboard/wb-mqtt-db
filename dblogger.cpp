@@ -1,6 +1,7 @@
 #include "dblogger.h"
 
 #include "benchmark.h"
+#include "log.h"
 
 #include <wblib/json_utils.h>
 #include <wblib/wbmqtt.h>
