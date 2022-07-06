@@ -207,15 +207,6 @@ TEST_F(TSqliteStorageTest, get_text_records)
                         100,
                         std::chrono::seconds(0));
 
-    Emit() << "\n## Average values, but send all";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        std::chrono::seconds(20));
-
     Emit() << "\n## Average values";
     storage->GetRecords(visitor, 
                         {{"test", "test"}, {"test", "test2"}},
@@ -226,6 +217,49 @@ TEST_F(TSqliteStorageTest, get_text_records)
                         std::chrono::seconds(40));
 }
 
+TEST_F(TSqliteStorageTest, get_text_records_max_records)
+{
+    auto storage = std::make_unique<TSqliteStorage>(":memory:");
+    auto channel1 = storage->CreateChannel( {"test", "test"});
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel1, "industrial", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+
+    auto channel2 = storage->CreateChannel( {"test", "test2"});
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel2, "192.168.1.1", "", "", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+
+    TRecordsVisitor visitor(*this);
+
+    Emit() << "## Raw values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test"}, {"test", "test2"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        0);
+
+    Emit() << "\n## Not more than max records, send all";
+    storage->GetRecords(visitor, 
+                        {{"test", "test"}, {"test", "test2"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        4);
+
+    Emit() << "\n## More than max records, average values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test"}, {"test", "test2"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        2);
+}
+
 TEST_F(TSqliteStorageTest, get_averaged)
 {
     auto storage = std::make_unique<TSqliteStorage>(":memory:");
@@ -233,7 +267,6 @@ TEST_F(TSqliteStorageTest, get_averaged)
     storage->WriteChannel(*channel, "1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
     storage->WriteChannel(*channel, "12", "10", "12", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
     storage->WriteChannel(*channel, "-165.777554", "1", "100", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
-
 
     TRecordsVisitor visitor(*this);
 
@@ -246,15 +279,6 @@ TEST_F(TSqliteStorageTest, get_averaged)
                         100,
                         std::chrono::seconds(0));
 
-    Emit() << "\n## Average values, but send all";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        std::chrono::seconds(20));
-
     Emit() << "\n## Average values";
     storage->GetRecords(visitor, 
                         {{"test", "test3"}},
@@ -263,4 +287,44 @@ TEST_F(TSqliteStorageTest, get_averaged)
                         0,
                         100,
                         std::chrono::seconds(20));
+}
+
+TEST_F(TSqliteStorageTest, get_averaged_by_max_records)
+{
+    auto storage = std::make_unique<TSqliteStorage>(":memory:");
+    auto channel = storage->CreateChannel( {"test", "test3"});
+    storage->WriteChannel(*channel, "1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel, "12", "10", "12", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel, "20.5", "10", "30", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+    storage->WriteChannel(*channel, "30.5", "20", "40", false, std::chrono::system_clock::time_point() + std::chrono::seconds(30));
+    storage->WriteChannel(*channel, "-165.777554", "1", "100", false, std::chrono::system_clock::time_point() + std::chrono::seconds(40));
+
+    TRecordsVisitor visitor(*this);
+
+    Emit() << "## Raw values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test3"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        0);
+
+    Emit() << "\n## Not more than max records, send all";
+    storage->GetRecords(visitor, 
+                        {{"test", "test3"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        5);
+
+    Emit() << "\n## Average values";
+    storage->GetRecords(visitor, 
+                        {{"test", "test3"}},
+                        std::chrono::system_clock::time_point(),
+                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+                        0,
+                        100,
+                        4);
 }

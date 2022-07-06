@@ -45,16 +45,20 @@ class TSqliteStorage : public IStorage
                                uint32_t                              maxRecords,
                                std::chrono::milliseconds             minInterval);
 
-    std::unordered_map<TChannelName, int> GetRecordsCount(std::vector<TChannelName>             channels,
-                                                          std::chrono::system_clock::time_point startTime,
-                                                          std::chrono::system_clock::time_point endTime);
+    std::unordered_map<int64_t, size_t> GetRecordsCount(const std::vector<int64_t>&           channelIds,
+                                                        std::chrono::system_clock::time_point startTime,
+                                                        std::chrono::system_clock::time_point endTime);
 
     int BindParams(SQLite::Statement&                    query,
                    int                                   param_num,
-                   const std::vector<TChannelName>&      channels,
+                   const std::vector<int64_t>&           channelIds,
                    std::chrono::system_clock::time_point startTime,
                    std::chrono::system_clock::time_point endTime,
                    int64_t                               startId);
+
+    void ProcessGetRecordsResult(SQLite::Statement& query, IRecordsVisitor& visitor) const;
+
+    std::vector<int64_t> GetChannelIds(const std::vector<TChannelName>& channels) const;
 
 public:
     /**
@@ -96,7 +100,8 @@ public:
      * @param endTime get records stored before the time
      * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
-     * @param minInterval minimum time between records
+     * @param minInterval minimum time between records, if > 0 average values will be returned
+     * @param parameter-name description
      */
     void GetRecords(IRecordsVisitor&                      visitor,
                     const std::vector<TChannelName>&      channels,
@@ -105,6 +110,27 @@ public:
                     int64_t                               startId,
                     uint32_t                              maxRecords,
                     std::chrono::milliseconds             minInterval) override;
+
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     * record
+     *
+     * @param visitor an object
+     * @param channels get records only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting after the id
+     * @param maxRecords maximum records to get from storage
+     * @param overallRecordsLimit maximum records count in whole interval between startTime and endTime, 
+     *                            0 - if not set
+     */
+    void GetRecords(IRecordsVisitor&                      visitor,
+                    const std::vector<TChannelName>&      channels,
+                    std::chrono::system_clock::time_point startTime,
+                    std::chrono::system_clock::time_point endTime,
+                    int64_t                               startId,
+                    uint32_t                              maxRecords,
+                    size_t                                overallRecordsLimit) override;
 
     /**
      * @brief Get channels from storage

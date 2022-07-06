@@ -132,7 +132,7 @@ public:
      * record
      *
      * @param visitor an object
-     * @param channels get recods only for these channels
+     * @param channels get records only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
      * @param startId get records stored starting after the id
@@ -146,6 +146,27 @@ public:
                             int64_t                               startId,
                             uint32_t                              maxRecords,
                             std::chrono::milliseconds             minInterval) = 0;
+
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     * record
+     *
+     * @param visitor an object
+     * @param channels get records only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting after the id
+     * @param maxRecords maximum records to get from storage
+     * @param overallRecordsLimit maximum records count in whole interval between startTime and endTime, 
+     *                            0 - if not set
+     */
+    virtual void GetRecords(IRecordsVisitor&                      visitor,
+                            const std::vector<TChannelName>&      channels,
+                            std::chrono::system_clock::time_point startTime,
+                            std::chrono::system_clock::time_point endTime,
+                            int64_t                               startId,
+                            uint32_t                              maxRecords,
+                            size_t                                overallRecordsLimit) = 0;
 
     /**
      * @brief Get channels from storage

@@ -70,6 +70,16 @@ namespace
         {
         }
 
+        void GetRecords(IRecordsVisitor&                      visitor,
+                        const std::vector<TChannelName>&      channels,
+                        std::chrono::system_clock::time_point startTime,
+                        std::chrono::system_clock::time_point endTime,
+                        int64_t                               startId,
+                        uint32_t                              maxRecords,
+                        size_t                                overallRecordsLimit) override
+        {
+        }
+
         void GetChannels(IChannelVisitor& visitor) override {}
         void DeleteRecords(TChannelInfo& channel, uint32_t count) override {}
         void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override {}
