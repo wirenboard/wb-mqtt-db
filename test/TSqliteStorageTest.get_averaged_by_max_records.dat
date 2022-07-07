@@ -72,14 +72,14 @@ Record id: 5
 Record id: 3
 	Channel: test/test3[1]
 	Average: 11.16666666666667
-	Time: 25
+	Time: 20
 	Min: 10
 	Max: 30
 	Retain: 0
 Record id: 5
 	Channel: test/test3[1]
 	Average: -67.638777
-	Time: 50
+	Time: 40
 	Min: 1
 	Max: 40
 	Retain: 0

@@ -66,10 +66,10 @@ Record id: 6
 Record id: 3
 	Channel: test/test[1]
 	Value: industrial
-	Time: 50
+	Time: 20
 	Retain: 0
 Record id: 6
 	Channel: test/test2[2]
 	Value: 192.168.1.1
-	Time: 50
+	Time: 20
 	Retain: 0

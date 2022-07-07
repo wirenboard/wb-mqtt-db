@@ -106,13 +106,12 @@ namespace
         queryStr += "timestamp > ? AND timestamp < ?";
     }
 
-    void AddWithAverageQuery(string& queryStr, size_t channelsCount, chrono::milliseconds interval)
+    void AddWithAverageQuery(string& queryStr, size_t channelsCount)
     {
-        auto intervalStr = to_string(interval.count());
-        queryStr += "SELECT MAX(uid), channel, value, (timestamp/" + intervalStr + " + 1)*" + intervalStr + ", MIN(min), MAX(max), retained, AVG(value) \
+        queryStr += "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), retained, AVG(value) \
                      FROM data INDEXED BY data_topic_timestamp WHERE ";
         AddCommonWhereClause(queryStr, channelsCount);
-        queryStr += " AND uid > ? GROUP BY (timestamp/" + intervalStr + "), channel";
+        queryStr += " AND uid > ? GROUP BY (round(timestamp/?)), channel";
     }
 
     void AddWithoutAverageQuery(string& queryStr, size_t channelsCount)
@@ -464,7 +463,7 @@ void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor&                     
 {
     auto channelIds = GetChannelIds(channels);
     string queryStr;
-    AddWithAverageQuery(queryStr, channelIds.size(), minInterval);
+    AddWithAverageQuery(queryStr, channelIds.size());
     queryStr += " ORDER BY uid ASC LIMIT ?";
 
     std::lock_guard<std::mutex> lg(Mutex);
@@ -472,6 +471,7 @@ void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor&                     
     SQLite::Statement query(*DB, queryStr);
     int param_num = BindParams(query, 0, channelIds, startTime, endTime, startId);
     LOG(Debug) << "day: fraction :" << minInterval.count();
+    query.bind(++param_num, minInterval.count());
     query.bind(++param_num, maxRecords);
 
     ProcessGetRecordsResult(query, visitor);
@@ -517,8 +517,7 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
         if (!queryStr.empty()) {
             queryStr += " UNION ALL ";
         }
-        auto minInterval = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime) / overallRecordsLimit;
-        AddWithAverageQuery(queryStr, withAverage.size(), minInterval);
+        AddWithAverageQuery(queryStr, withAverage.size());
     }
     queryStr += " ORDER BY uid ASC LIMIT ?";
 
@@ -532,6 +531,8 @@ void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
     }
     if (!withAverage.empty()) {
         param_num = BindParams(query, param_num, withAverage, startTime, endTime, startId);
+        auto minInterval = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime) / overallRecordsLimit;
+        query.bind(++param_num, minInterval.count());
     }
     query.bind(++param_num, maxRecords);
 
