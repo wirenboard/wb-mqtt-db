@@ -398,8 +398,7 @@ bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                      
     if (ProtocolVersion == 1) {
         row["i"] = recordId;
         row["c"] = channel.GetId();
-        row["t"] =
-            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+        row["t"] = duration_cast<milliseconds>(timestamp.time_since_epoch()).count() / 1000.0;
     } else {
         row["uid"]     = recordId;
         row["device"]  = channel.GetName().Device;

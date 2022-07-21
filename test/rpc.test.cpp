@@ -60,15 +60,16 @@ namespace
             dt.tm_hour = 10;
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
+            auto time = std::chrono::system_clock::from_time_t(timegm(&dt));
             visitor.ProcessRecord(1,
                                   *VinChannel,
                                   "test1",
-                                  std::chrono::system_clock::from_time_t(timegm(&dt)),
+                                  time,
                                   false);
             visitor.ProcessRecord(2,
                                   *VinChannel,
                                   10.0,
-                                  std::chrono::system_clock::from_time_t(timegm(&dt)),
+                                  time + std::chrono::milliseconds(250),
                                   20.0,
                                   30.0,
                                   true);
