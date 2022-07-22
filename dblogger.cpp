@@ -507,13 +507,14 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     if (params.isMember("max_records")) {
         try {
             // we request one extra row to know whether there are more than 'limit' available
-            Storage.GetRecords(visitor,
-                            channels,
-                            timestamp_gt,
-                            timestamp_lt,
-                            startingRecordId,
-                            rowLimit + 1,
-                            params["max_records"].asUInt());
+            Storage.GetRecordsWithLimit
+                (visitor,
+                 channels,
+                 timestamp_gt,
+                 timestamp_lt,
+                 startingRecordId,
+                 rowLimit + 1,
+                 params["max_records"].asUInt());
         } catch (const std::exception& e) {
             LOG(Error) << e.what();
             throw;
@@ -534,13 +535,14 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
 
         try {
             // we request one extra row to know whether there are more than 'limit' available
-            Storage.GetRecords(visitor,
-                            channels,
-                            timestamp_gt,
-                            timestamp_lt,
-                            startingRecordId,
-                            rowLimit + 1,
-                            minInterval);
+            Storage.GetRecordsWithAveragingInterval
+                (visitor,
+                 channels,
+                 timestamp_gt,
+                 timestamp_lt,
+                 startingRecordId,
+                 rowLimit + 1,
+                 minInterval);
         } catch (const std::exception& e) {
             LOG(Error) << e.what();
             throw;
