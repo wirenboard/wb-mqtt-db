@@ -33,13 +33,14 @@ namespace
             SetPrecision(channelInfo, precision);
         }
 
-        void GetRecords(IRecordsVisitor&                      visitor,
-                        const std::vector<TChannelName>&      channels,
-                        std::chrono::system_clock::time_point startTime,
-                        std::chrono::system_clock::time_point endTime,
-                        int64_t                               startId,
-                        uint32_t                              maxRecords,
-                        std::chrono::milliseconds             minInterval) override
+        void GetRecordsWithAveragingInterval
+            (IRecordsVisitor&                      visitor,
+             const std::vector<TChannelName>&      channels,
+             std::chrono::system_clock::time_point startTime,
+             std::chrono::system_clock::time_point endTime,
+             int64_t                               startId,
+             uint32_t                              maxRecords,
+             std::chrono::milliseconds             minInterval) override
         {
             Fixture.Emit() << "Storage GetRecords";
             for (const auto& channel : channels) {
@@ -75,13 +76,14 @@ namespace
                                   true);
         }
 
-        void GetRecords(IRecordsVisitor&                      visitor,
-                        const std::vector<TChannelName>&      channels,
-                        std::chrono::system_clock::time_point startTime,
-                        std::chrono::system_clock::time_point endTime,
-                        int64_t                               startId,
-                        uint32_t                              maxRecords,
-                        size_t                                overallRecordsLimit) override
+        void GetRecordsWithLimit
+            (IRecordsVisitor&                      visitor,
+             const std::vector<TChannelName>&      channels,
+             std::chrono::system_clock::time_point startTime,
+             std::chrono::system_clock::time_point endTime,
+             int64_t                               startId,
+             uint32_t                              maxRecords,
+             size_t                                overallRecordsLimit) override
         {
             Fixture.Emit() << "Storage GetRecords";
             for (const auto& channel : channels) {
@@ -270,6 +272,16 @@ TEST_F(TRpcTest, get_records_v1_max_records)
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
     rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"max_records\": 100, \"min_interval\": 95040.00000000001}");
+}
+
+TEST_F(TRpcTest, get_records_v1_with_milliseconds)
+{
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"min_interval\": 95040, \"with_milliseconds\": true}");
 }
 
 TEST_F(TRpcTest, round)

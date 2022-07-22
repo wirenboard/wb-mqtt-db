@@ -92,7 +92,8 @@ public:
 
     /**
      * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
-     * record
+     *        record. The whole result set is divided into chunks by minInterval.
+     *        All values in a chunk are averaged.
      *
      * @param visitor an object
      * @param channels get records only for these channels
@@ -100,20 +101,22 @@ public:
      * @param endTime get records stored before the time
      * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
-     * @param minInterval minimum time between records, if > 0 average values will be returned
-     * @param parameter-name description
+     * @param minInterval averaging interval (minimum time between records), 0 - without averaging
      */
-    void GetRecords(IRecordsVisitor&                      visitor,
-                    const std::vector<TChannelName>&      channels,
-                    std::chrono::system_clock::time_point startTime,
-                    std::chrono::system_clock::time_point endTime,
-                    int64_t                               startId,
-                    uint32_t                              maxRecords,
-                    std::chrono::milliseconds             minInterval) override;
+    void GetRecordsWithAveragingInterval
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         std::chrono::milliseconds             minInterval) override;
 
     /**
      * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
-     * record
+     *        record. If result set has less than or equal to maxRecords records, it is returned as is.
+     *        If more than maxRecords, it is divided into maxRecords chunks.
+     *        All values in a chunk are averaged.
      *
      * @param visitor an object
      * @param channels get records only for these channels
@@ -122,15 +125,16 @@ public:
      * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
      * @param overallRecordsLimit maximum records count in whole interval between startTime and endTime, 
-     *                            0 - if not set
+     *                            0 - without averaging
      */
-    void GetRecords(IRecordsVisitor&                      visitor,
-                    const std::vector<TChannelName>&      channels,
-                    std::chrono::system_clock::time_point startTime,
-                    std::chrono::system_clock::time_point endTime,
-                    int64_t                               startId,
-                    uint32_t                              maxRecords,
-                    size_t                                overallRecordsLimit) override;
+    void GetRecordsWithLimit
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         size_t                                overallRecordsLimit) override;
 
     /**
      * @brief Get channels from storage

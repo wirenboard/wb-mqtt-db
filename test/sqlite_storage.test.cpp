@@ -86,7 +86,7 @@ TEST_F(TSqliteStorageTest, write)
     storage.WriteChannel(*vin, "11", "10", "12", false, time + std::chrono::seconds(100));
 
     TRecordsVisitor visitor(*this);
-    storage.GetRecords(visitor, {channelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
+    storage.GetRecordsWithAveragingInterval(visitor, {channelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
 
     ASSERT_EQ(vin->GetRecordCount(), 2);
 }
@@ -106,7 +106,7 @@ TEST_F(TSqliteStorageTest, deleteRows)
     ASSERT_EQ(vin->GetRecordCount(), 4);
 
     TRecordsVisitor visitor(*this);
-    storage.GetRecords(visitor, {channelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
+    storage.GetRecordsWithAveragingInterval(visitor, {channelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
 
     // Delete more than exists
     storage.DeleteRecords(*vin, 5);
@@ -136,13 +136,13 @@ TEST_F(TSqliteStorageTest, deleteGroupRows)
     storage.DeleteRecords({*vin}, 5);
     ASSERT_EQ(vin->GetRecordCount(), 4);
     ASSERT_EQ(a1->GetRecordCount(), 9);
-    storage.GetRecords(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
+    storage.GetRecordsWithAveragingInterval(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
 
     Emit() << "## Delete records from Vin and A1";
     storage.DeleteRecords({*vin, *a1}, 6);
     ASSERT_EQ(vin->GetRecordCount(), 3);
     ASSERT_EQ(a1->GetRecordCount(), 4);
-    storage.GetRecords(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
+    storage.GetRecordsWithAveragingInterval(visitor, {vinChannelName, a1ChannelName}, time, time + std::chrono::seconds(200), 0, 100, std::chrono::milliseconds(0));
 
     // Delete more than exists
     storage.DeleteRecords(*vin, 5);
@@ -199,22 +199,24 @@ TEST_F(TSqliteStorageTest, get_text_records)
     TRecordsVisitor visitor(*this);
 
     Emit() << "## Raw values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        std::chrono::seconds(0));
+    storage->GetRecordsWithAveragingInterval
+        (visitor, 
+         {{"test", "test"}, {"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         std::chrono::seconds(0));
 
     Emit() << "\n## Average values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        std::chrono::seconds(40));
+    storage->GetRecordsWithAveragingInterval
+       (visitor, 
+        {{"test", "test"}, {"test", "test2"}},
+        std::chrono::system_clock::time_point(),
+        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+        0,
+        100,
+        std::chrono::seconds(40));
 }
 
 TEST_F(TSqliteStorageTest, get_text_records_max_records)
@@ -233,31 +235,34 @@ TEST_F(TSqliteStorageTest, get_text_records_max_records)
     TRecordsVisitor visitor(*this);
 
     Emit() << "## Raw values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        0);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test"}, {"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         0);
 
     Emit() << "\n## Not more than max records, send all";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        4);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test"}, {"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         4);
 
     Emit() << "\n## More than max records, average values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test"}, {"test", "test2"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        2);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test"}, {"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         2);
 }
 
 TEST_F(TSqliteStorageTest, get_averaged)
@@ -271,22 +276,24 @@ TEST_F(TSqliteStorageTest, get_averaged)
     TRecordsVisitor visitor(*this);
 
     Emit() << "## Raw values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        std::chrono::seconds(0));
+    storage->GetRecordsWithAveragingInterval
+        (visitor, 
+         {{"test", "test3"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         std::chrono::seconds(0));
 
     Emit() << "\n## Average values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(30),
-                        0,
-                        100,
-                        std::chrono::seconds(20));
+    storage->GetRecordsWithAveragingInterval
+        (visitor, 
+         {{"test", "test3"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(30),
+         0,
+         100,
+         std::chrono::seconds(20));
 }
 
 TEST_F(TSqliteStorageTest, get_averaged_by_max_records)
@@ -302,29 +309,32 @@ TEST_F(TSqliteStorageTest, get_averaged_by_max_records)
     TRecordsVisitor visitor(*this);
 
     Emit() << "## Raw values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        0);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test3"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         0);
 
     Emit() << "\n## Not more than max records, send all";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        5);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test3"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         5);
 
     Emit() << "\n## Average values";
-    storage->GetRecords(visitor, 
-                        {{"test", "test3"}},
-                        std::chrono::system_clock::time_point(),
-                        std::chrono::system_clock::time_point() + std::chrono::seconds(100),
-                        0,
-                        100,
-                        4);
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test3"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         4);
 }

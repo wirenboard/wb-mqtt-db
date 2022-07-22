@@ -255,6 +255,7 @@ class TJsonRecordsVisitor : public IRecordsVisitor
     int                                   RowCount;
     std::chrono::steady_clock::time_point StartTime;
     std::chrono::steady_clock::duration   Timeout;
+    bool                                  WithMilliseconds;
 
     bool CommonProcessRecord(Json::Value&                          row,
                              int                                   recordId,
@@ -265,7 +266,10 @@ class TJsonRecordsVisitor : public IRecordsVisitor
 public:
     Json::Value Root;
 
-    TJsonRecordsVisitor(int protocolVersion, int rowLimit, std::chrono::steady_clock::duration timeout);
+    TJsonRecordsVisitor(int protocolVersion,
+                        int rowLimit,
+                        std::chrono::steady_clock::duration timeout,
+                        bool withMilliseconds = false);
 
     bool ProcessRecord(int                                   recordId,
                        const TChannelInfo&                   channel,

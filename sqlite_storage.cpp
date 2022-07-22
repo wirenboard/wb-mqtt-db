@@ -401,13 +401,14 @@ void TSqliteStorage::SetChannelPrecision(TChannelInfo& channelInfo, double preci
     SetPrecision(channelInfo, precision);
 }
 
-void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
-                                const std::vector<TChannelName>&      channels,
-                                std::chrono::system_clock::time_point startTime,
-                                std::chrono::system_clock::time_point endTime,
-                                int64_t                               startId,
-                                uint32_t                              maxRecords,
-                                std::chrono::milliseconds             minInterval)
+void TSqliteStorage::GetRecordsWithAveragingInterval
+    (IRecordsVisitor&                      visitor,
+     const std::vector<TChannelName>&      channels,
+     std::chrono::system_clock::time_point startTime,
+     std::chrono::system_clock::time_point endTime,
+     int64_t                               startId,
+     uint32_t                              maxRecords,
+     std::chrono::milliseconds             minInterval)
 {
     if (minInterval.count() > 0) {
         GetRecordsWithAverage(visitor, channels, startTime, endTime, startId, maxRecords, minInterval);
@@ -489,13 +490,14 @@ std::vector<int64_t> TSqliteStorage::GetChannelIds(const std::vector<TChannelNam
     return res;
 }
 
-void TSqliteStorage::GetRecords(IRecordsVisitor&                      visitor,
-                                const std::vector<TChannelName>&      channels,
-                                std::chrono::system_clock::time_point startTime,
-                                std::chrono::system_clock::time_point endTime,
-                                int64_t                               startId,
-                                uint32_t                              maxRecords,
-                                size_t                                overallRecordsLimit)
+void TSqliteStorage::GetRecordsWithLimit
+    (IRecordsVisitor&                      visitor,
+     const std::vector<TChannelName>&      channels,
+     std::chrono::system_clock::time_point startTime,
+     std::chrono::system_clock::time_point endTime,
+     int64_t                               startId,
+     uint32_t                              maxRecords,
+     size_t                                overallRecordsLimit)
 {
     std::vector<int64_t> withAverage;
     std::vector<int64_t> withoutAverage;
