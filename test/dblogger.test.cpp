@@ -60,13 +60,25 @@ namespace
             HasRecords = false;
         }
 
-        void GetRecords(IRecordsVisitor&                      visitor,
-                        const std::vector<TChannelName>&      channels,
-                        std::chrono::system_clock::time_point startTime,
-                        std::chrono::system_clock::time_point endTime,
-                        int64_t                               startId,
-                        uint32_t                              maxRecords,
-                        std::chrono::milliseconds             minInterval) override
+        void GetRecordsWithAveragingInterval
+            (IRecordsVisitor&                      visitor,
+             const std::vector<TChannelName>&      channels,
+             std::chrono::system_clock::time_point startTime,
+             std::chrono::system_clock::time_point endTime,
+             int64_t                               startId,
+             uint32_t                              maxRecords,
+             std::chrono::milliseconds             minInterval) override
+        {
+        }
+
+        void GetRecordsWithLimit
+            (IRecordsVisitor&                      visitor,
+             const std::vector<TChannelName>&      channels,
+             std::chrono::system_clock::time_point startTime,
+             std::chrono::system_clock::time_point endTime,
+             int64_t                               startId,
+             uint32_t                              maxRecords,
+             size_t                                overallRecordsLimit) override
         {
         }
 

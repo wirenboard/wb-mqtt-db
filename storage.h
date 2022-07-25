@@ -10,7 +10,7 @@
 class IStorage;
 
 /**
- * @brief Device name and control name pair for identificaition of a control
+ * @brief Device name and control name pair for identification of a control
  */
 struct TChannelName
 {
@@ -41,7 +41,7 @@ namespace std
 std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
 
 /**
- * @brief Device name and control name pair for identificaition of a control
+ * @brief Device name and control name pair for identification of a control
  */
 class TChannelInfo
 {
@@ -108,12 +108,12 @@ public:
     virtual PChannelInfo CreateChannel(const TChannelName& channelName) = 0;
 
     /**
-     * @brief Set channel's precision. One must call Commit to finalaze writing to storage.
+     * @brief Set channel's precision. One must call Commit to finalize writing to storage.
      */
     virtual void SetChannelPrecision(TChannelInfo& channelInfo, double precision) = 0;
 
     /**
-     * @brief Write channel data into storage. One must call Commit to finalaze writing.
+     * @brief Write channel data into storage. One must call Commit to finalize writing.
      */
     virtual void WriteChannel(TChannelInfo&                         channelInfo,
                               const std::string&                    value,
@@ -129,23 +129,49 @@ public:
 
     /**
      * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
-     * record
+     *        record. The whole result set is divided into chunks by minInterval.
+     *        All values in a chunk are averaged.
      *
      * @param visitor an object
-     * @param channels get recods only for these channels
+     * @param channels get records only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
-     * @param startId get records stored starting from the id
+     * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
-     * @param minInterval minimum time between records
+     * @param minInterval averaging interval (minimum time between records), 0 - without averaging
      */
-    virtual void GetRecords(IRecordsVisitor&                      visitor,
-                            const std::vector<TChannelName>&      channels,
-                            std::chrono::system_clock::time_point startTime,
-                            std::chrono::system_clock::time_point endTime,
-                            int64_t                               startId,
-                            uint32_t                              maxRecords,
-                            std::chrono::milliseconds             minInterval) = 0;
+    virtual void GetRecordsWithAveragingInterval
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         std::chrono::milliseconds             minInterval) = 0;
+
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     *        record. If result set has less than or equal to maxRecords records, it is returned as is.
+     *        If more than maxRecords, it is divided into maxRecords chunks.
+     *        All values in a chunk are averaged.
+     *
+     * @param visitor an object
+     * @param channels get records only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting after the id
+     * @param maxRecords maximum records to get from storage
+     * @param overallRecordsLimit maximum records count in whole interval between startTime and endTime, 
+     *                            0 - without averaging
+     */
+    virtual void GetRecordsWithLimit
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         size_t                                overallRecordsLimit) = 0;
 
     /**
      * @brief Get channels from storage

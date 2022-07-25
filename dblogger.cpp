@@ -373,13 +373,19 @@ Json::Value TMQTTDBLoggerRpcHandler::GetChannels(const Json::Value& /*params*/)
     return visitor.Root;
 }
 
-TJsonRecordsVisitor::TJsonRecordsVisitor(int protocolVersion, int rowLimit, steady_clock::duration timeout)
-    : ProtocolVersion(protocolVersion), RowLimit(rowLimit), RowCount(0), Timeout(timeout)
+TJsonRecordsVisitor::TJsonRecordsVisitor(int protocolVersion,
+                                         int rowLimit,
+                                         steady_clock::duration timeout,
+                                         bool withMilliseconds)
+    : ProtocolVersion(protocolVersion),
+      RowLimit(rowLimit),
+      RowCount(0),
+      Timeout(timeout),
+      WithMilliseconds(withMilliseconds)
 {
     StartTime      = steady_clock::now();
     Root["values"] = Json::Value(Json::arrayValue);
 }
-
 
 bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                          row,
                                               int                                   recordId,
@@ -399,8 +405,12 @@ bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                      
     if (ProtocolVersion == 1) {
         row["i"] = recordId;
         row["c"] = channel.GetId();
-        row["t"] =
-            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+        if (WithMilliseconds) {
+            row["t"] = duration_cast<milliseconds>(timestamp.time_since_epoch()).count() / 1000.0;
+        } else {
+            row["t"] =
+                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+        }
     } else {
         row["uid"]     = recordId;
         row["device"]  = channel.GetName().Device;
@@ -469,7 +479,9 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     int rowLimit = std::numeric_limits<int>::max() - 1;
     JSON::Get(params, "limit", rowLimit);
 
-    TJsonRecordsVisitor visitor(protocolVersion, rowLimit, timeout);
+    bool withMilliseconds =  params.get("with_milliseconds", false).asBool();
+
+    TJsonRecordsVisitor visitor(protocolVersion, rowLimit, timeout, withMilliseconds);
 
     system_clock::time_point timestamp_gt;
     system_clock::time_point timestamp_lt = system_clock::now();
@@ -486,19 +498,6 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         }
     }
 
-    // After moving JSON std::chrono parsers to libwbmqtt1
-    // RPC requests from homeui became broken because
-    // their min_interval value is Number not int and sometimes
-    // comes with fractional part (e.g. 95040.00000000001).
-    // This explicit convertion to double fixes it.
-    // This also will be fixed in homeui though.
-    double minIntervalMs = 0;
-    JSON::Get(params, "min_interval", minIntervalMs);
-    if (minIntervalMs < 0) {
-        minIntervalMs = 0;
-    }
-    auto minInterval = std::chrono::milliseconds(int64_t(minIntervalMs));
-
     std::vector<TChannelName> channels;
     for (const auto& channelItem : params["channels"]) {
         if (!(channelItem.isArray() && (channelItem.size() == 2)))
@@ -506,18 +505,49 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         channels.emplace_back(channelItem[0u].asString(), channelItem[1u].asString());
     }
 
-    try {
-        // we request one extra row to know whether there are more than 'limit' available
-        Storage.GetRecords(visitor,
-                           channels,
-                           timestamp_gt,
-                           timestamp_lt,
-                           startingRecordId,
-                           rowLimit + 1,
-                           minInterval);
-    } catch (const std::exception& e) {
-        LOG(Error) << e.what();
-        throw;
+    if (params.isMember("max_records")) {
+        try {
+            // we request one extra row to know whether there are more than 'limit' available
+            Storage.GetRecordsWithLimit
+                (visitor,
+                 channels,
+                 timestamp_gt,
+                 timestamp_lt,
+                 startingRecordId,
+                 rowLimit + 1,
+                 params["max_records"].asUInt());
+        } catch (const std::exception& e) {
+            LOG(Error) << e.what();
+            throw;
+        }
+    } else {
+        // After moving JSON std::chrono parsers to libwbmqtt1
+        // RPC requests from homeui became broken because
+        // their min_interval value is Number not int and sometimes
+        // comes with fractional part (e.g. 95040.00000000001).
+        // This explicit conversion to double fixes it.
+        // This also will be fixed in homeui though.
+        double minIntervalMs = 0;
+        JSON::Get(params, "min_interval", minIntervalMs);
+        if (minIntervalMs < 0) {
+            minIntervalMs = 0;
+        }
+        auto minInterval = std::chrono::milliseconds(int64_t(minIntervalMs));
+
+        try {
+            // we request one extra row to know whether there are more than 'limit' available
+            Storage.GetRecordsWithAveragingInterval
+                (visitor,
+                 channels,
+                 timestamp_gt,
+                 timestamp_lt,
+                 startingRecordId,
+                 rowLimit + 1,
+                 minInterval);
+        } catch (const std::exception& e) {
+            LOG(Error) << e.what();
+            throw;
+        }
     }
     return visitor.Root;
 }

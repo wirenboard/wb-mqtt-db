@@ -29,6 +29,37 @@ class TSqliteStorage : public IStorage
 
     void Load();
 
+
+    void GetRecordsWithoutAverage(IRecordsVisitor&                      visitor,
+                                  const std::vector<TChannelName>&      channels,
+                                  std::chrono::system_clock::time_point startTime,
+                                  std::chrono::system_clock::time_point endTime,
+                                  int64_t                               startId,
+                                  uint32_t                              maxRecords);
+
+    void GetRecordsWithAverage(IRecordsVisitor&                      visitor,
+                               const std::vector<TChannelName>&      channels,
+                               std::chrono::system_clock::time_point startTime,
+                               std::chrono::system_clock::time_point endTime,
+                               int64_t                               startId,
+                               uint32_t                              maxRecords,
+                               std::chrono::milliseconds             minInterval);
+
+    std::unordered_map<int64_t, size_t> GetRecordsCount(const std::vector<int64_t>&           channelIds,
+                                                        std::chrono::system_clock::time_point startTime,
+                                                        std::chrono::system_clock::time_point endTime);
+
+    int BindParams(SQLite::Statement&                    query,
+                   int                                   param_num,
+                   const std::vector<int64_t>&           channelIds,
+                   std::chrono::system_clock::time_point startTime,
+                   std::chrono::system_clock::time_point endTime,
+                   int64_t                               startId);
+
+    void ProcessGetRecordsResult(SQLite::Statement& query, IRecordsVisitor& visitor) const;
+
+    std::vector<int64_t> GetChannelIds(const std::vector<TChannelName>& channels) const;
+
 public:
     /**
      * @brief Construct a new TSqliteStorage object
@@ -61,23 +92,49 @@ public:
 
     /**
      * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
-     * record
+     *        record. The whole result set is divided into chunks by minInterval.
+     *        All values in a chunk are averaged.
      *
      * @param visitor an object
-     * @param channels get recods only for these channels
+     * @param channels get records only for these channels
      * @param startTime get records stored starting from the time
      * @param endTime get records stored before the time
-     * @param startId get records stored starting from the id
+     * @param startId get records stored starting after the id
      * @param maxRecords maximum records to get from storage
-     * @param minInterval minimum time between records
+     * @param minInterval averaging interval (minimum time between records), 0 - without averaging
      */
-    void GetRecords(IRecordsVisitor&                      visitor,
-                    const std::vector<TChannelName>&      channels,
-                    std::chrono::system_clock::time_point startTime,
-                    std::chrono::system_clock::time_point endTime,
-                    int64_t                               startId,
-                    uint32_t                              maxRecords,
-                    std::chrono::milliseconds             minInterval) override;
+    void GetRecordsWithAveragingInterval
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         std::chrono::milliseconds             minInterval) override;
+
+    /**
+     * @brief Get records from storage according to constraints, call visitors ProcessRecord for every
+     *        record. If result set has less than or equal to maxRecords records, it is returned as is.
+     *        If more than maxRecords, it is divided into maxRecords chunks.
+     *        All values in a chunk are averaged.
+     *
+     * @param visitor an object
+     * @param channels get records only for these channels
+     * @param startTime get records stored starting from the time
+     * @param endTime get records stored before the time
+     * @param startId get records stored starting after the id
+     * @param maxRecords maximum records to get from storage
+     * @param overallRecordsLimit maximum records count in whole interval between startTime and endTime, 
+     *                            0 - without averaging
+     */
+    void GetRecordsWithLimit
+        (IRecordsVisitor&                      visitor,
+         const std::vector<TChannelName>&      channels,
+         std::chrono::system_clock::time_point startTime,
+         std::chrono::system_clock::time_point endTime,
+         int64_t                               startId,
+         uint32_t                              maxRecords,
+         size_t                                overallRecordsLimit) override;
 
     /**
      * @brief Get channels from storage

@@ -38,7 +38,7 @@ struct TAccumulator
     double Average() const;
 };
 
-//! Information about speceific channel
+//! Information about specific channel
 struct TChannel
 {
     PChannelInfo ChannelInfo;
@@ -190,7 +190,7 @@ public:
     void Start(std::chrono::steady_clock::time_point currentTime);
 
     /**
-     * @brief Store messages or avegare values for next call
+     * @brief Store messages or average values for next call
      * 
      * @return next time to call HandleMessages
      */
@@ -255,6 +255,7 @@ class TJsonRecordsVisitor : public IRecordsVisitor
     int                                   RowCount;
     std::chrono::steady_clock::time_point StartTime;
     std::chrono::steady_clock::duration   Timeout;
+    bool                                  WithMilliseconds;
 
     bool CommonProcessRecord(Json::Value&                          row,
                              int                                   recordId,
@@ -265,7 +266,10 @@ class TJsonRecordsVisitor : public IRecordsVisitor
 public:
     Json::Value Root;
 
-    TJsonRecordsVisitor(int protocolVersion, int rowLimit, std::chrono::steady_clock::duration timeout);
+    TJsonRecordsVisitor(int protocolVersion,
+                        int rowLimit,
+                        std::chrono::steady_clock::duration timeout,
+                        bool withMilliseconds = false);
 
     bool ProcessRecord(int                                   recordId,
                        const TChannelInfo&                   channel,
