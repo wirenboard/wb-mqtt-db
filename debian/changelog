@@ -4,7 +4,13 @@ wb-mqtt-db (2.6.0) stable; urgency=medium
     The service averages values in RPC response if too many records are requested.
     Otherwise it sends original values even if min_interval is defined in request.
 
- -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Fri, 20 May 2022 11:29:56 +0500
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Mon, 25 Jul 2022 07:29:37 +0500
+
+wb-mqtt-db (2.5.5) stable; urgency=medium
+
+  * Debug log channels enabling is fixed
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Tue, 07 Jun 2022 13:17:24 +0500
 
 wb-mqtt-db (2.5.4) stable; urgency=medium
 
