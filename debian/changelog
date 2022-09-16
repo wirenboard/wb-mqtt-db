@@ -1,3 +1,9 @@
+wb-mqtt-db (2.7.0) stable; urgency=medium
+
+  * Remove python dependency by removing old confconvert script
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 15 Sep 2022 17:26:12 +0300
+
 wb-mqtt-db (2.6.0) stable; urgency=medium
 
   * New averaging logic in RPC.

@@ -34,7 +34,6 @@ SQLITECPP_DIR=thirdparty/SQLiteCpp/src
 SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
 
 OBJ=config.o log.o sqlite_storage.o dblogger.o db_migrations.o storage.o benchmark.o
-DB_CONFCONVERT=wb-mqtt-db-confconvert
 
 TEST_SOURCES= 								\
 			$(TEST_DIR)/test_main.cpp		\
@@ -87,7 +86,6 @@ install: all
 	install -d $(DESTDIR)/var/lib/wirenboard/db
 
 	install -D -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
-	install -D -m 0755  $(DB_CONFCONVERT) $(DESTDIR)/usr/bin/$(DB_CONFCONVERT)
 	install -D -m 0644  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
 
 	install -D -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
