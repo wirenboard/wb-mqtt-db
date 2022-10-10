@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.0) stable; urgency=medium
+
+  * Port for Debian bullseye
+
+ -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Mon, 10 Oct 2022 16:30:35 +0400
+
 wb-mqtt-db (2.7.0) stable; urgency=medium
 
   * Remove python dependency by removing old confconvert script
