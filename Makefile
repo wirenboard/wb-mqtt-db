@@ -15,11 +15,8 @@ CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include -Wno-psabi
 
 # We build armhf targets with an old version of sqlite
 CC_TARGET := $(shell $(CC) -dumpmachine)
-ifeq ($(CC_TARGET),arm-linux-gnueabihf)
-	CXXFLAGS+=-DSQLITE_USE_LEGACY_STRUCT
-endif
 
-LDFLAGS=-lwbmqtt1 -lsqlite3
+LDFLAGS=-lwbmqtt1 -lsqlite3 -lpthread
 
 ifeq ($(DEBUG), 1)
 	CXXFLAGS+=-O0 -g
