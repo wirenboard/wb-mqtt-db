@@ -117,7 +117,7 @@ get\_channels
 ### Входные параметры
 
 В поле `params` пустой JSON объект:
-```json
+```jsonc
 { "id": <ID транзакции>, "params": {} }
 ```
 
@@ -130,7 +130,7 @@ get\_channels
   * *last\_ts* - временная метка (UNIX timestamp UTC) последнего зарегистрированного значения.
 
 Пример ответа:
-```json
+```jsonc
 {
   "error": null,
   // ID транзакции
