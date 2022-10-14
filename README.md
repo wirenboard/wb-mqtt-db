@@ -95,15 +95,15 @@ root@wirenboard:~# cat /etc/wb-mqtt-db.conf
 
 Публикация запросов отправляется в топик:
 ```
-/rpc/v1/db_logger/history/<PRC-method>/<client_id>
+/rpc/v1/db_logger/history/<RPC-method>/<client_id>
 ```
 Где:
-* `PRC-method` - имя метода сервиса,
-* `cliend_id` - ID клиента сервиса.
+* `RPC-method` - имя метода сервиса,
+* `client_id` - ID клиента сервиса.
 
 Ответы публикуются в топик:
 ```
-.../reply
+/rpc/v1/db_logger/history/<RPC-method>/<client_id>/reply
 ```
 
 Методы сервиса
