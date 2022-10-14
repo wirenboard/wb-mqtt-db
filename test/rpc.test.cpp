@@ -30,7 +30,7 @@ namespace
 
         void SetChannelPrecision(TChannelInfo& channelInfo, double precision) override
         {
-            SetPrecision(channelInfo, precision);
+            channelInfo.SetPrecision(precision);
         }
 
         void GetRecordsWithAveragingInterval
@@ -123,24 +123,24 @@ namespace
             tm dt;
             memset(&dt, 0, sizeof(tm));
 
-            SetRecordCount(*VinChannel, 100);
+            VinChannel->SetRecordCount(100);
             dt.tm_year = 100;
             dt.tm_mon  = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
             dt.tm_min  = 20;
             dt.tm_sec  = 30;
-            SetLastRecordTime(*VinChannel, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            VinChannel->SetLastRecordTime(std::chrono::system_clock::from_time_t(timegm(&dt)));
             visitor.ProcessChannel(VinChannel);
 
-            SetRecordCount(*A1Channel, 1000);
+            A1Channel->SetRecordCount(1000);
             dt.tm_year = 110;
             dt.tm_mon  = 4;
             dt.tm_mday = 2;
             dt.tm_hour = 11;
             dt.tm_min  = 21;
             dt.tm_sec  = 31;
-            SetLastRecordTime(*A1Channel, std::chrono::system_clock::from_time_t(timegm(&dt)));
+            A1Channel->SetLastRecordTime(std::chrono::system_clock::from_time_t(timegm(&dt)));
             visitor.ProcessChannel(A1Channel);
         }
 
