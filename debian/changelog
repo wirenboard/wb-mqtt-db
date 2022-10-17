@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.1) stable; urgency=medium
+
+  * Improve database access performance
+
+ -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Mon, 17 Oct 2022 12:04:06 +0400
+
 wb-mqtt-db (2.8.0) stable; urgency=medium
 
   * Port for Debian bullseye
