@@ -534,7 +534,7 @@ void TSqliteStorage::GetRecordsWithLimit
     if (!withAverage.empty()) {
         param_num = BindParams(query, param_num, withAverage, startTime, endTime, startId);
         auto minInterval = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime) / overallRecordsLimit;
-        query.bind(++param_num, minInterval.count());
+        query.bind(++param_num, static_cast<int64_t>(minInterval.count()));
     }
     query.bind(++param_num, maxRecords);
 
