@@ -34,7 +34,7 @@ namespace
         {
             if (channelInfo.GetPrecision() != precision) {
                 Fixture.Emit() << "Set precision for " << channelInfo.GetName() << " to " << precision;
-                channelInfo.SetPrecision(precision);
+                SetPrecision(channelInfo, precision);
             }
         }
 

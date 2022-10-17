@@ -45,17 +45,19 @@ std::ostream& operator<<(std::ostream& out, const struct TChannelName& name);
  */
 class TChannelInfo
 {
+    friend class IStorage; // Only IStorage can create and modify TChannelInfo
+
     int64_t                               Id;
     int                                   RecordCount;
     std::chrono::system_clock::time_point LastRecordTime;
     TChannelName                          Name;
     double                                Precision;
-public:
+
     TChannelInfo(int64_t id, const std::string& device, const std::string& control);
 
     TChannelInfo(const TChannelInfo&) = delete;
     TChannelInfo& operator=(const TChannelInfo&) = delete;
-
+public:
     const TChannelName&                          GetName() const;
     int                                          GetRecordCount() const;
     const std::chrono::system_clock::time_point& GetLastRecordTime() const;
@@ -63,10 +65,6 @@ public:
 
     //! Value's precision if channel stores numbers. 0.0 - no rounding
     double GetPrecision() const;
-
-    void SetRecordCount(int recordCount);
-    void SetLastRecordTime(const std::chrono::system_clock::time_point& time);
-    void SetPrecision(double precision);
 };
 
 typedef std::shared_ptr<TChannelInfo> PChannelInfo;
@@ -185,6 +183,9 @@ public:
 
 protected:
     PChannelInfo CreateChannelPrivate(uint64_t id, const std::string& device, const std::string& control);
+    void SetRecordCount(TChannelInfo& channel, int recordCount);
+    void SetLastRecordTime(TChannelInfo& channel, const std::chrono::system_clock::time_point& time);
+    void SetPrecision(TChannelInfo& channel, double precision);
     const std::unordered_map<TChannelName, PChannelInfo>& GetChannelsPrivate() const;
     PChannelInfo FindChannel(const TChannelName& channelName) const;
 

@@ -262,12 +262,12 @@ void TSqliteStorage::Load()
         rowCountQuery.bind(1, query.getColumn(0).getInt64());
         rowCountQuery.executeStep();
         auto channel = CreateChannelPrivate(query.getColumn(0).getInt64(), query.getColumn(1), query.getColumn(2));
-        channel->SetRecordCount(rowCountQuery.getColumn(0));
+        SetRecordCount(*channel, rowCountQuery.getColumn(0));
         if (!rowCountQuery.getColumn(1).isNull()) {
-            channel->SetLastRecordTime(std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
+            SetLastRecordTime(*channel, std::chrono::system_clock::from_time_t(rowCountQuery.getColumn(1).getInt64()));
         }
         if (!query.getColumn(3).isNull()) {
-            channel->SetPrecision(query.getColumn(3).getDouble());
+            SetPrecision(*channel, query.getColumn(3).getDouble());
         }
     }
 }
@@ -376,8 +376,8 @@ void TSqliteStorage::WriteChannel(TChannelInfo&                         channelI
     InsertRowQuery->exec();
     InsertRowQuery->reset();
 
-    channelInfo.SetRecordCount(channelInfo.GetRecordCount() + 1);
-    channelInfo.SetLastRecordTime(time);
+    SetRecordCount(channelInfo, channelInfo.GetRecordCount() + 1);
+    SetLastRecordTime(channelInfo, time);
 }
 
 void TSqliteStorage::Commit()
@@ -416,7 +416,7 @@ void TSqliteStorage::SetChannelPrecision(TChannelInfo& channelInfo, double preci
     query.bind(1, precision);
     query.bind(2, channelInfo.GetId());
     query.exec();
-    channelInfo.SetPrecision(precision);
+    SetPrecision(channelInfo, precision);
 }
 
 void TSqliteStorage::GetRecordsWithAveragingInterval
@@ -588,7 +588,7 @@ void TSqliteStorage::DeleteRecords(TChannelInfo& channel, uint32_t count)
     CleanChannelQuery->bind(2, count);
     auto deletedRows = CleanChannelQuery->exec();
     CleanChannelQuery->reset();
-    channel.SetRecordCount(channel.GetRecordCount() - deletedRows);
+    SetRecordCount(channel, channel.GetRecordCount() - deletedRows);
     LOG(Debug) << "Clear channel id = " << channel.GetId();
 }
 
@@ -616,7 +616,7 @@ void TSqliteStorage::DeleteRecords(const std::vector<std::reference_wrapper<TCha
     for (TChannelInfo& channel: channels) {
         auto it = deletedRows.find(channel.GetId());
         if (it != deletedRows.end()) {
-            channel.SetRecordCount(channel.GetRecordCount() - it->second);
+            SetRecordCount(channel, channel.GetRecordCount() - it->second);
         }
     }
 }
