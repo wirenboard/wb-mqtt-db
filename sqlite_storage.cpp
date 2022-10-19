@@ -122,6 +122,22 @@ namespace
         queryStr += " AND uid > ?";
     }
 
+    // Function to optimize database for better performance
+    void TuneDatabase(SQLite::Database& db){
+
+        // The WAL journaling mode uses a write-ahead log instead of a rollback journal to implement transactions.
+        // * WAL is significantly faster in most scenarios.
+        // * WAL uses many fewer fsync() operations and is thus less vulnerable
+        //   to problems on systems where the fsync() system call is broken.
+        db.exec("PRAGMA journal_mode=WAL");
+
+        // In WAL mode when synchronous is NORMAL, the WAL file is synchronized before each checkpoint
+        // and the database file is synchronized after each completed checkpoint
+        // and the WAL file header is synchronized when a WAL file begins to be reused after a checkpoint,
+        // but no sync operations occur during most transactions
+        db.exec("PRAGMA synchronous=NORMAL");
+    }
+
 } // namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
@@ -139,7 +155,9 @@ TSqliteStorage::TSqliteStorage(const string& dbFile)
         flags |= SQLite::OPEN_URI;
     }
 
-    DB.reset(new SQLite::Database(dbFile, flags));
+    DB = std::make_unique<SQLite::Database>(dbFile, flags);
+
+    TuneDatabase(*DB);
 
     if (!DB->tableExists("data")) {
         // new DB file created
