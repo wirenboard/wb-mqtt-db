@@ -1,6 +1,6 @@
 wb-mqtt-db (2.8.2) stable; urgency=medium
 
-  * Fix build
+  * Fix build error (SQLite::Statement::bind does not support unsigned 64-bit integer value)
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 17 Oct 2022 07:25:25 -0400
 
