@@ -1,0 +1,10 @@
+include(GNUInstallDirs)
+
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES config.json DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR} RENAME wb-mqtt-db.conf)
+install(FILES wb-mqtt-db.wbconfigs DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/wb-configs.d RENAME 16wb-mqtt-db)
+install(FILES wb-mqtt-db.schema.json DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/wb-mqtt-confed/schemas)
+install(FILES debian/changelog DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR} RENAME copyright)
+install(FILES debian/wb-mqtt-db.service DESTINATION /lib/systemd/system)
+install(DIRECTORY DESTINATION ${CMAKE_INSTALL_FULL_LOCALSTATEDIR}/lib/wirenboard/db)
