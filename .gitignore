@@ -46,3 +46,7 @@ wb-mqtt-db-test
 .vscode
 debian/files
 debian/wb-mqtt-db.substvars
+
+### direnv ###
+.direnv
+.envrc
