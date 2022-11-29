@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.3) stable; urgency=medium
+
+  * Return empty table if no rpc request channels match with available channels
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.ru>  Mon, 28 Nov 2022 12:37:24 +0300
+
 wb-mqtt-db (2.8.2) stable; urgency=medium
 
   * Fix build error (SQLite::Statement::bind does not support unsigned 64-bit integer value)

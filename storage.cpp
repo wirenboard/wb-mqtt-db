@@ -78,5 +78,5 @@ PChannelInfo IStorage::FindChannel(const TChannelName& channelName) const
     if (it != Channels.end()) {
         return it->second;
     }
-    return PChannelInfo();
+    return nullptr;
 }
