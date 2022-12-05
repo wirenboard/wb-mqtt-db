@@ -30,8 +30,8 @@ namespace
     }
 
     // Function to optimize database for better performance
-    void TuneDatabase(SQLite::Database& db) {
-
+    void TuneDatabase(SQLite::Database& db)
+    {
         // The WAL journaling mode uses a write-ahead log instead of a rollback journal to implement transactions.
         // * WAL is significantly faster in most scenarios.
         // * WAL uses many fewer fsync() operations and is thus less vulnerable
