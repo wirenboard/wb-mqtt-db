@@ -7,10 +7,12 @@
 
 #include "db_migrations.h"
 #include "log.h"
+#include "utils.h"
 
 using namespace std;
 using namespace WBMQTT;
 using namespace std::chrono;
+using namespace Utils;
 
 #define LOG(logger) ::logger.Log() << "[sqlite] "
 
@@ -20,111 +22,16 @@ namespace
     const int   WB_DB_VERSION            = 6;
 
     const int UNDEFINED_ID = -1;
-
-    const int UID_COLUMN = 0;
     const int CHANNEL_COLUMN = 1;
-    const int VALUE_COLUMN = 2;
-    const int TIMESTAMP_COLUMN = 3;
-    const int MIN_COLUMN = 4;
-    const int MAX_COLUMN = 5;
-    const int RETAINED_COLUMN = 6;
-    const int AVERAGE_VALUE_COLUMN = 7;
 
     string BackupFileName(const string& filename)
     {
         return filename + DB_BACKUP_FILE_EXTENSION;
     }
 
-    void CopyFile(const string& from, const string& to)
-    {
-        ifstream src(from, ios::binary);
-        ofstream dst(to, ios::binary);
-
-        dst << src.rdbuf();
-    }
-
-    template<typename Iterator, typename Predicate>
-    std::string Join(Iterator begin, Iterator end, Predicate pred, const std::string& delim)
-    {
-        std::stringstream res;
-        if (begin != end) {
-            res << pred(*begin);
-        }
-        ++begin;
-        for (; begin != end; ++begin) {
-            res << delim << pred(*begin);
-        }
-        return res.str();
-    }
-
-    bool isNumber(const std::string& str)
-    {
-        const char* s = str.c_str();
-        char* end     = nullptr;
-        strtod(s, &end);
-        return (end != s && end == s + str.length());
-    }
-
-    bool CallVisitor(IRecordsVisitor& visitor, SQLite::Statement& query, bool withAverage, const TChannelInfo& channel)
-    {
-        int  recordId = query.getColumn(UID_COLUMN).getInt();
-        bool retain   = (query.getColumn(RETAINED_COLUMN).getInt() > 0);
-        system_clock::time_point timestamp(milliseconds(query.getColumn(TIMESTAMP_COLUMN).getInt64()));
-
-        if (withAverage && !isNumber(query.getColumn(VALUE_COLUMN).getString())) {
-            return visitor.ProcessRecord(recordId,
-                                         channel,
-                                         query.getColumn(VALUE_COLUMN).getString(),
-                                         timestamp,
-                                         retain);
-        }
-        if (query.getColumn(MAX_COLUMN).isNull()) {
-            return visitor.ProcessRecord(recordId,
-                                         channel,
-                                         query.getColumn(AVERAGE_VALUE_COLUMN).getString(),
-                                         timestamp,
-                                         retain);
-        }
-        return visitor.ProcessRecord(recordId,
-                                     channel,
-                                     query.getColumn(withAverage ? AVERAGE_VALUE_COLUMN : VALUE_COLUMN).getDouble(),
-                                     timestamp,
-                                     query.getColumn(MIN_COLUMN).getDouble(),
-                                     query.getColumn(MAX_COLUMN).getDouble(),
-                                     retain);
-    }
-
-    void AddCommonWhereClause(string& queryStr, size_t channelsCount)
-    {
-        queryStr += "channel IN ( ";
-        if (channelsCount > 0) {
-            for (size_t i = 0; i < channelsCount - 1; ++i) {
-                queryStr += "?,";
-            }
-            queryStr += "?";
-        }
-        queryStr += ") AND timestamp > ? AND timestamp < ?";
-    }
-
-    void AddWithAverageQuery(string& queryStr, size_t channelsCount)
-    {
-        queryStr += "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), retained, AVG(value) \
-                     FROM data INDEXED BY data_topic_timestamp WHERE ";
-        AddCommonWhereClause(queryStr, channelsCount);
-        queryStr += " AND uid > ? GROUP BY (round(timestamp/?)), channel";
-    }
-
-    void AddWithoutAverageQuery(string& queryStr, size_t channelsCount)
-    {
-        queryStr += "SELECT uid, channel, value, timestamp, min, max, retained, value \
-                     FROM data INDEXED BY data_topic_timestamp WHERE ";
-        AddCommonWhereClause(queryStr, channelsCount);
-        queryStr += " AND uid > ?";
-    }
-
     // Function to optimize database for better performance
-    void TuneDatabase(SQLite::Database& db){
-
+    void TuneDatabase(SQLite::Database& db)
+    {
         // The WAL journaling mode uses a write-ahead log instead of a rollback journal to implement transactions.
         // * WAL is significantly faster in most scenarios.
         // * WAL uses many fewer fsync() operations and is thus less vulnerable
