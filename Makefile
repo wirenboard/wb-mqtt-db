@@ -1,5 +1,3 @@
-DEBUG?=0
-
 ifneq ($(DEB_HOST_MULTIARCH),)
 	CROSS_COMPILE ?= $(DEB_HOST_MULTIARCH)-
 endif
@@ -11,58 +9,60 @@ ifeq ($(origin CXX),default)
 	CXX := $(CROSS_COMPILE)g++
 endif
 
-CXXFLAGS=-Wall -std=c++14 -I. -I./thirdparty/SQLiteCpp/include -Wno-psabi
+ifeq ($(DEBUG),)
+	BUILD_DIR ?= build/release
+else
+	BUILD_DIR ?= build/debug
+endif
 
-# We build armhf targets with an old version of sqlite
-CC_TARGET := $(shell $(CC) -dumpmachine)
+PREFIX = /usr
 
-LDFLAGS=-lwbmqtt1 -lsqlite3 -lpthread
+DB_BIN = wb-mqtt-db
+SRC_DIR = src
+
+SQLITECPP_SRC = thirdparty/SQLiteCpp/src
+SQLITECPP_INCLUDE = thirdparty/SQLiteCpp/include
+
+COMMON_SRCS := $(shell find $(SRC_DIR) $(SQLITECPP_SRC) \( -name *.cpp -or -name *.c \) -and -not -name main.cpp)
+COMMON_OBJS := $(COMMON_SRCS:%=$(BUILD_DIR)/%.o)
+
+CXXFLAGS = -Wall -std=c++14 -I$(SRC_DIR) -I$(SQLITECPP_INCLUDE) -Wno-psabi
+LDFLAGS = -lwbmqtt1 -lsqlite3 -lpthread
 
 ifeq ($(DEBUG), 1)
-	CXXFLAGS+=-O0 -g
+	CXXFLAGS+=-O0 -g -fprofile-arcs -ftest-coverage
+	LDFLAGS += -lgcov
 else
 	CXXFLAGS+=-Os -DNDEBUG
 endif
 
-CPPFLAGS=$(CFLAGS)
-
-DB_BIN=wb-mqtt-db
-SQLITECPP_DIR=thirdparty/SQLiteCpp/src
-SQLITECPP_OBJ := $(patsubst %.cpp,%.o,$(wildcard $(SQLITECPP_DIR)/*.cpp))
-
-OBJ=config.o log.o utils.o sqlite_storage.o dblogger.o db_migrations.o storage.o benchmark.o
-
-TEST_SOURCES= 								\
-			$(TEST_DIR)/test_main.cpp		\
-			$(TEST_DIR)/config.test.cpp		\
-			$(TEST_DIR)/rpc.test.cpp		\
-			$(TEST_DIR)/dblogger.test.cpp	\
-			$(TEST_DIR)/sqlite_storage.test.cpp	\
-			$(TEST_DIR)/utils.test.cpp
-
-TEST_DIR=test
-export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
-
-TEST_OBJECTS=$(TEST_SOURCES:.cpp=.o)
+TEST_DIR = test
+TEST_SRCS := $(shell find $(TEST_DIR) \( -name *.cpp -or -name *.c \))
+TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_BIN=wb-mqtt-db-test
 TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
+
+export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
 
 .PHONY: all clean test
 
 all : $(DB_BIN)
 
-$(DB_BIN): main.o $(OBJ) $(SQLITECPP_OBJ)
-	${CXX} $^ ${LDFLAGS} -o $@
+$(DB_BIN): $(COMMON_OBJS) $(BUILD_DIR)/src/main.cpp.o
+	$(CXX) $^ $(LDFLAGS) -o $(BUILD_DIR)/$@
 
-%.o: %.cpp
-	${CXX} -c $< -o $@ ${CXXFLAGS};
+$(BUILD_DIR)/%.cpp.o: %.cpp
+	mkdir -p $(dir $@)
+	$(CXX) -c $< -o $@ $(CXXFLAGS)
 
-$(TEST_DIR)/$(TEST_BIN): $(OBJ) $(SQLITECPP_OBJ) $(TEST_OBJECTS)
-	${CXX} $^ $(LDFLAGS) $(TEST_LIBS) -o $@ -fno-lto
+$(BUILD_DIR)/test/%.o: test/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $^
+
+$(TEST_DIR)/$(TEST_BIN): $(COMMON_OBJS) $(TEST_OBJS)
+	$(CXX) $^ $(LDFLAGS) $(TEST_LIBS) -o $@ -fno-lto
 
 test: $(TEST_DIR)/$(TEST_BIN)
 	rm -f $(TEST_DIR)/*.dat.out
-ifneq ($(DEBUG), 1)
 	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
 		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
 		if [ $$? = 180 ]; then \
@@ -72,20 +72,25 @@ ifneq ($(DEBUG), 1)
     else \
         $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
 	fi
+
+lcov: test
+ifeq ($(DEBUG), 1)
+	geninfo --no-external -b . -o $(BUILD_DIR)/coverage.info $(BUILD_DIR)/src
+	genhtml $(BUILD_DIR)/coverage.info -o $(BUILD_DIR)/cov_html
 endif
 
 clean:
+	-rm -rf build/release
+	-rm -rf build/debug
 	-rm -f $(TEST_DIR)/*.dat.out
-	-rm -f *.o $(DB_BIN)
-	-rm -f $(SQLITECPP_DIR)/*.o
 	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)
 
-install: all
+install:
 	install -d $(DESTDIR)/var/lib/wirenboard/db
 
-	install -D -m 0755  $(DB_BIN) $(DESTDIR)/usr/bin/$(DB_BIN)
-	install -D -m 0644  config.json $(DESTDIR)/etc/wb-mqtt-db.conf
+	install -Dm0755 $(BUILD_DIR)/$(DB_BIN) -t $(DESTDIR)$(PREFIX)/bin
+	install -Dm0644 config.json $(DESTDIR)/etc/wb-mqtt-db.conf
 
-	install -D -m 0644  wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
-	install -D -m 0644  wb-mqtt-db.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/wb-mqtt-db.schema.json
+	install -Dm0644 wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
+	install -Dm0644 wb-mqtt-db.schema.json -t $(DESTDIR)$(PREFIX)/share/wb-mqtt-confed/schemas
 

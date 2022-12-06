@@ -3,7 +3,7 @@ wb-mqtt-db
 
 Сервис для сохранения данных в БД sqlite. Сохраняет значения mqtt каналов устройства, которые указаны в конфигурации.
 
-Соглашения о наименованиях в MQTT: https://github.com/contactless/homeui/blob/contactless/conventions.md
+Соглашения о наименованиях в MQTT: https://github.com/wirenboard/conventions
 
 Конфигурация демона сохранения
 ------------------------------
@@ -89,7 +89,7 @@ root@wirenboard:~# cat /etc/wb-mqtt-db.conf
 
 Запросы MQTT RPC
 ================
-Для получения данных о каналах и массива значений каналов используется протокол [MQTT-RPC](https://github.com/contactless/mqtt-rpc).
+Для получения данных о каналах и массива значений каналов используется протокол [MQTT-RPC](https://github.com/wirenboard/mqtt-rpc).
 
 `wb-mqtt-db` предоставляет RPC драйвер `db_logger`, который содержит RPC сервис `history`.
 
