@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.6) stable; urgency=medium
+
+  * Fix missing channels request error
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 09 Dec 2022 17:26:22 +0500
+
 wb-mqtt-db (2.8.5) stable; urgency=medium
 
   * Add make lcov target to generate test coverage, no functional changes
