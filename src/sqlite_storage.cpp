@@ -446,6 +446,11 @@ void TSqliteStorage::GetRecordsWithLimit
         }
         AddWithAverageQuery(queryStr, withAverage.size());
     }
+
+    if (queryStr.empty()) {
+        // No channels to select
+        return;
+    }
     queryStr += " ORDER BY uid ASC LIMIT ?";
 
     std::lock_guard<std::mutex> lg(Mutex);
