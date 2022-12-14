@@ -96,14 +96,14 @@ namespace
 
     void AddCommonWhereClause(string& queryStr, size_t channelsCount)
     {
+        queryStr += "channel IN ( ";
         if (channelsCount > 0) {
-            queryStr += "channel IN ( ";
-            for (size_t i = 0 ; i < channelsCount - 1; ++i) {
+            for (size_t i = 0; i < channelsCount - 1; ++i) {
                 queryStr += "?,";
             }
-            queryStr += "?) AND ";
+            queryStr += "?";
         }
-        queryStr += "timestamp > ? AND timestamp < ?";
+        queryStr += ") AND timestamp > ? AND timestamp < ?";
     }
 
     void AddWithAverageQuery(string& queryStr, size_t channelsCount)
@@ -520,6 +520,11 @@ void TSqliteStorage::GetRecordsWithLimit
             queryStr += " UNION ALL ";
         }
         AddWithAverageQuery(queryStr, withAverage.size());
+    }
+
+    if (queryStr.empty()) {
+        // No channels to select
+        return;
     }
     queryStr += " ORDER BY uid ASC LIMIT ?";
 
