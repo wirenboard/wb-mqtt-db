@@ -338,3 +338,36 @@ TEST_F(TSqliteStorageTest, get_averaged_by_max_records)
          100,
          4);
 }
+
+TEST_F(TSqliteStorageTest, get_unavailable_channel)
+{
+    auto storage = std::make_unique<TSqliteStorage>(":memory:");
+    auto channel = storage->CreateChannel( {"test", "test3"});
+    storage->WriteChannel(*channel, "1", "", "", true, std::chrono::system_clock::time_point() + std::chrono::seconds(5));
+    storage->WriteChannel(*channel, "12", "10", "12", false, std::chrono::system_clock::time_point() + std::chrono::seconds(10));
+    storage->WriteChannel(*channel, "20.5", "10", "30", false, std::chrono::system_clock::time_point() + std::chrono::seconds(20));
+    storage->WriteChannel(*channel, "30.5", "20", "40", false, std::chrono::system_clock::time_point() + std::chrono::seconds(30));
+    storage->WriteChannel(*channel, "-165.777554", "1", "100", false, std::chrono::system_clock::time_point() + std::chrono::seconds(40));
+
+    TRecordsVisitor visitor(*this);
+
+    Emit() << "## With limit";
+    storage->GetRecordsWithLimit
+        (visitor, 
+         {{"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         0);
+
+    Emit() << "## With averaging interval";
+    storage->GetRecordsWithAveragingInterval
+        (visitor, 
+         {{"test", "test2"}},
+         std::chrono::system_clock::time_point(),
+         std::chrono::system_clock::time_point() + std::chrono::seconds(100),
+         0,
+         100,
+         std::chrono::seconds(0));
+}
