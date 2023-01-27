@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.7) stable; urgency=medium
+
+  * Fix "debug" config option has no effect
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 27 Jan 2023 17:23:00 +0400
+
 wb-mqtt-db (2.8.6) stable; urgency=medium
 
   * Fix missing channels request error
