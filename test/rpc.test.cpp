@@ -171,6 +171,8 @@ namespace
             Handlers[method] = handler;
         }
 
+        void RegisterAsyncMethod(const std::string& service, const std::string& method, WBMQTT::TMqttRpcServer::TAsyncMethodHandler handler) {}
+
         void CallRpc(const std::string& method, const std::string& args)
         {
             Json::Value argsJson;
