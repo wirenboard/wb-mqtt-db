@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "SQLiteCpp/SQLiteCpp.h"
 #include "storage.h"
@@ -29,4 +29,4 @@ namespace Utils
     void AddCommonWhereClause(std::string& queryStr, size_t channelsCount);
     void AddWithAverageQuery(std::string& queryStr, size_t channelsCount);
     void AddWithoutAverageQuery(std::string& queryStr, size_t channelsCount);
-}
+} // namespace Utils

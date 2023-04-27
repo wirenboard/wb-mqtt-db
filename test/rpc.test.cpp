@@ -3,24 +3,25 @@
 #include <gtest/gtest.h>
 #include <stdio.h>
 #include <time.h>
-#include <wblib/wbmqtt.h>
 #include <wblib/json_utils.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
+#include <wblib/wbmqtt.h>
 
 namespace
 {
-    class TFakeStorage : public IStorage
+    class TFakeStorage: public IStorage
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
-        int                              Id;
-        PChannelInfo                     VinChannel;
-        PChannelInfo                     A1Channel;
+        int Id;
+        PChannelInfo VinChannel;
+        PChannelInfo A1Channel;
+
     public:
-        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture) : Fixture(fixture), Id(0)
+        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture): Fixture(fixture), Id(0)
         {
             VinChannel = CreateChannel({"wb-adc", "Vin"});
-            A1Channel  = CreateChannel({"wb-adc",  "A1"});
+            A1Channel = CreateChannel({"wb-adc", "A1"});
         }
 
         PChannelInfo CreateChannel(const TChannelName& channelName) override
@@ -33,17 +34,16 @@ namespace
             SetPrecision(channelInfo, precision);
         }
 
-        void GetRecordsWithAveragingInterval
-            (IRecordsVisitor&                      visitor,
-             const std::vector<TChannelName>&      channels,
-             std::chrono::system_clock::time_point startTime,
-             std::chrono::system_clock::time_point endTime,
-             int64_t                               startId,
-             uint32_t                              maxRecords,
-             std::chrono::milliseconds             minInterval) override
+        void GetRecordsWithAveragingInterval(IRecordsVisitor& visitor,
+                                             const std::vector<TChannelName>& channels,
+                                             std::chrono::system_clock::time_point startTime,
+                                             std::chrono::system_clock::time_point endTime,
+                                             int64_t startId,
+                                             uint32_t maxRecords,
+                                             std::chrono::milliseconds minInterval) override
         {
             Fixture.Emit() << "Storage GetRecords";
-            for (const auto& channel : channels) {
+            for (const auto& channel: channels) {
                 Fixture.Emit() << "  " << channel;
             }
             auto t1 = std::chrono::system_clock::to_time_t(startTime);
@@ -56,37 +56,26 @@ namespace
             tm dt;
             memset(&dt, 0, sizeof(tm));
             dt.tm_year = 100;
-            dt.tm_mon  = 3;
+            dt.tm_mon = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
-            dt.tm_min  = 20;
-            dt.tm_sec  = 30;
+            dt.tm_min = 20;
+            dt.tm_sec = 30;
             auto time = std::chrono::system_clock::from_time_t(timegm(&dt));
-            visitor.ProcessRecord(1,
-                                  *VinChannel,
-                                  "test1",
-                                  time,
-                                  false);
-            visitor.ProcessRecord(2,
-                                  *VinChannel,
-                                  10.0,
-                                  time + std::chrono::milliseconds(250),
-                                  20.0,
-                                  30.0,
-                                  true);
+            visitor.ProcessRecord(1, *VinChannel, "test1", time, false);
+            visitor.ProcessRecord(2, *VinChannel, 10.0, time + std::chrono::milliseconds(250), 20.0, 30.0, true);
         }
 
-        void GetRecordsWithLimit
-            (IRecordsVisitor&                      visitor,
-             const std::vector<TChannelName>&      channels,
-             std::chrono::system_clock::time_point startTime,
-             std::chrono::system_clock::time_point endTime,
-             int64_t                               startId,
-             uint32_t                              maxRecords,
-             size_t                                overallRecordsLimit) override
+        void GetRecordsWithLimit(IRecordsVisitor& visitor,
+                                 const std::vector<TChannelName>& channels,
+                                 std::chrono::system_clock::time_point startTime,
+                                 std::chrono::system_clock::time_point endTime,
+                                 int64_t startId,
+                                 uint32_t maxRecords,
+                                 size_t overallRecordsLimit) override
         {
             Fixture.Emit() << "Storage GetRecords";
-            for (const auto& channel : channels) {
+            for (const auto& channel: channels) {
                 Fixture.Emit() << "  " << channel;
             }
             auto t1 = std::chrono::system_clock::to_time_t(startTime);
@@ -99,16 +88,12 @@ namespace
             tm dt;
             memset(&dt, 0, sizeof(tm));
             dt.tm_year = 100;
-            dt.tm_mon  = 3;
+            dt.tm_mon = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
-            dt.tm_min  = 20;
-            dt.tm_sec  = 30;
-            visitor.ProcessRecord(1,
-                                  *VinChannel,
-                                  "test1",
-                                  std::chrono::system_clock::from_time_t(timegm(&dt)),
-                                  false);
+            dt.tm_min = 20;
+            dt.tm_sec = 30;
+            visitor.ProcessRecord(1, *VinChannel, "test1", std::chrono::system_clock::from_time_t(timegm(&dt)), false);
             visitor.ProcessRecord(2,
                                   *VinChannel,
                                   10.0,
@@ -125,53 +110,62 @@ namespace
 
             SetRecordCount(*VinChannel, 100);
             dt.tm_year = 100;
-            dt.tm_mon  = 3;
+            dt.tm_mon = 3;
             dt.tm_mday = 1;
             dt.tm_hour = 10;
-            dt.tm_min  = 20;
-            dt.tm_sec  = 30;
+            dt.tm_min = 20;
+            dt.tm_sec = 30;
             SetLastRecordTime(*VinChannel, std::chrono::system_clock::from_time_t(timegm(&dt)));
             visitor.ProcessChannel(VinChannel);
 
             SetRecordCount(*A1Channel, 1000);
             dt.tm_year = 110;
-            dt.tm_mon  = 4;
+            dt.tm_mon = 4;
             dt.tm_mday = 2;
             dt.tm_hour = 11;
-            dt.tm_min  = 21;
-            dt.tm_sec  = 31;
+            dt.tm_min = 21;
+            dt.tm_sec = 31;
             SetLastRecordTime(*A1Channel, std::chrono::system_clock::from_time_t(timegm(&dt)));
             visitor.ProcessChannel(A1Channel);
         }
 
-        void WriteChannel(TChannelInfo&                         channelInfo,
-                          const std::string&                    value,
-                          const std::string&                    minimum,
-                          const std::string&                    maximum,
-                          bool                                  retained,
-                          std::chrono::system_clock::time_point time) override {}
+        void WriteChannel(TChannelInfo& channelInfo,
+                          const std::string& value,
+                          const std::string& minimum,
+                          const std::string& maximum,
+                          bool retained,
+                          std::chrono::system_clock::time_point time) override
+        {}
 
-        void Commit() override {}
-        void DeleteRecords(TChannelInfo& channel, uint32_t count) override {}
-        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override {}
+        void Commit() override
+        {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) override
+        {}
+        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override
+        {}
     };
 
     class TFakeMqttRpcServer: public WBMQTT::TMqttRpcServer
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
         std::map<std::string, WBMQTT::TMqttRpcServer::TMethodHandler> Handlers;
+
     public:
-        TFakeMqttRpcServer(WBMQTT::Testing::TLoggedFixture& fixture)
-            : Fixture(fixture)
+        TFakeMqttRpcServer(WBMQTT::Testing::TLoggedFixture& fixture): Fixture(fixture)
         {}
 
-        void RegisterMethod(const std::string& service, const std::string& method, WBMQTT::TMqttRpcServer::TMethodHandler handler)
+        void RegisterMethod(const std::string& service,
+                            const std::string& method,
+                            WBMQTT::TMqttRpcServer::TMethodHandler handler)
         {
-            Fixture.Emit()<< "Register RPC " << service << " " << method;
+            Fixture.Emit() << "Register RPC " << service << " " << method;
             Handlers[method] = handler;
         }
 
-        void RegisterAsyncMethod(const std::string& service, const std::string& method, WBMQTT::TMqttRpcServer::TAsyncMethodHandler handler) {}
+        void RegisterAsyncMethod(const std::string& service,
+                                 const std::string& method,
+                                 WBMQTT::TMqttRpcServer::TAsyncMethodHandler handler)
+        {}
 
         void CallRpc(const std::string& method, const std::string& args)
         {
@@ -191,7 +185,7 @@ namespace
                 Fixture.Emit() << args;
             }
 
-            auto res =  Handlers.at(method)(argsJson);
+            auto res = Handlers.at(method)(argsJson);
 
             std::stringstream ss;
             Json::StreamWriterBuilder writerBuilder;
@@ -202,12 +196,14 @@ namespace
             Fixture.Emit() << ss.str();
         }
 
-        void Start() {}
-        void Stop() {}
+        void Start()
+        {}
+        void Stop()
+        {}
     };
 } // namespace
 
-class TRpcTest : public WBMQTT::Testing::TLoggedFixture
+class TRpcTest: public WBMQTT::Testing::TLoggedFixture
 {
 protected:
     std::string testRootDir;
@@ -243,7 +239,9 @@ TEST_F(TRpcTest, get_records_v0)
     TFakeStorage storage(*this);
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
-    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":0,\"timestamp\":{\"lt\":954566430}}");
+    rpc.CallRpc("get_values",
+                "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                "\"ver\":0,\"timestamp\":{\"lt\":954566430}}");
 }
 
 TEST_F(TRpcTest, get_records_v1)
@@ -253,7 +251,9 @@ TEST_F(TRpcTest, get_records_v1)
     TFakeStorage storage(*this);
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
-    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}}");
+    rpc.CallRpc("get_values",
+                "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                "\"ver\":1,\"timestamp\":{\"lt\":954566430}}");
 }
 
 TEST_F(TRpcTest, get_records_v1_min_interval)
@@ -263,7 +263,9 @@ TEST_F(TRpcTest, get_records_v1_min_interval)
     TFakeStorage storage(*this);
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
-    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"min_interval\": 95040.00000000001}");
+    rpc.CallRpc("get_values",
+                "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,"
+                "\"timestamp\":{\"lt\":954566430}, \"min_interval\": 95040.00000000001}");
 }
 
 TEST_F(TRpcTest, get_records_v1_max_records)
@@ -273,7 +275,10 @@ TEST_F(TRpcTest, get_records_v1_max_records)
     TFakeStorage storage(*this);
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
-    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"max_records\": 100, \"min_interval\": 95040.00000000001}");
+    rpc.CallRpc("get_values",
+                "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                "\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"max_records\": "
+                "100, \"min_interval\": 95040.00000000001}");
 }
 
 TEST_F(TRpcTest, get_records_v1_with_milliseconds)
@@ -283,7 +288,10 @@ TEST_F(TRpcTest, get_records_v1_with_milliseconds)
     TFakeStorage storage(*this);
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
-    rpc.CallRpc("get_values", "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"min_interval\": 95040, \"with_milliseconds\": true}");
+    rpc.CallRpc("get_values",
+                "{\"channels\":[[\"wb-adc\",\"Vin\"],[\"wb-adc\",\"A1\"]],"
+                "\"ver\":1,\"timestamp\":{\"lt\":954566430}, \"min_interval\": "
+                "95040, \"with_milliseconds\": true}");
 }
 
 TEST_F(TRpcTest, round)

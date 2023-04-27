@@ -2,27 +2,23 @@
 #include "sqlite_storage.h"
 #include <gtest/gtest.h>
 #include <stdio.h>
-#include <wblib/wbmqtt.h>
 #include <wblib/testing/fake_mqtt.h>
 #include <wblib/testing/testlog.h>
+#include <wblib/wbmqtt.h>
 
 using namespace std::chrono;
 
 namespace
 {
-    class TFakeStorage : public IStorage
+    class TFakeStorage: public IStorage
     {
-        WBMQTT::Testing::TLoggedFixture&      Fixture;
-        bool                                  HasRecords;
-        uint64_t                              ChannelId;
+        WBMQTT::Testing::TLoggedFixture& Fixture;
+        bool HasRecords;
+        uint64_t ChannelId;
 
     public:
-        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture)
-            : Fixture(fixture),
-              HasRecords(false),
-              ChannelId(1)
-        {
-        }
+        TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture): Fixture(fixture), HasRecords(false), ChannelId(1)
+        {}
 
         PChannelInfo CreateChannel(const TChannelName& channelName) override
         {
@@ -38,17 +34,17 @@ namespace
             }
         }
 
-        void WriteChannel(TChannelInfo&                         channelInfo,
-                          const std::string&                    value,
-                          const std::string&                    minimum,
-                          const std::string&                    maximum,
-                          bool                                  retained,
+        void WriteChannel(TChannelInfo& channelInfo,
+                          const std::string& value,
+                          const std::string& minimum,
+                          const std::string& maximum,
+                          bool retained,
                           std::chrono::system_clock::time_point time) override
         {
             Fixture.Emit() << "Storage data:";
             Fixture.Emit() << "  Value: " << value;
-            Fixture.Emit() << "  Min: "   << minimum;
-            Fixture.Emit() << "  Max: "   << maximum;
+            Fixture.Emit() << "  Min: " << minimum;
+            Fixture.Emit() << "  Max: " << maximum;
             HasRecords = true;
         }
 
@@ -60,53 +56,52 @@ namespace
             HasRecords = false;
         }
 
-        void GetRecordsWithAveragingInterval
-            (IRecordsVisitor&                      visitor,
-             const std::vector<TChannelName>&      channels,
-             std::chrono::system_clock::time_point startTime,
-             std::chrono::system_clock::time_point endTime,
-             int64_t                               startId,
-             uint32_t                              maxRecords,
-             std::chrono::milliseconds             minInterval) override
-        {
-        }
+        void GetRecordsWithAveragingInterval(IRecordsVisitor& visitor,
+                                             const std::vector<TChannelName>& channels,
+                                             std::chrono::system_clock::time_point startTime,
+                                             std::chrono::system_clock::time_point endTime,
+                                             int64_t startId,
+                                             uint32_t maxRecords,
+                                             std::chrono::milliseconds minInterval) override
+        {}
 
-        void GetRecordsWithLimit
-            (IRecordsVisitor&                      visitor,
-             const std::vector<TChannelName>&      channels,
-             std::chrono::system_clock::time_point startTime,
-             std::chrono::system_clock::time_point endTime,
-             int64_t                               startId,
-             uint32_t                              maxRecords,
-             size_t                                overallRecordsLimit) override
-        {
-        }
+        void GetRecordsWithLimit(IRecordsVisitor& visitor,
+                                 const std::vector<TChannelName>& channels,
+                                 std::chrono::system_clock::time_point startTime,
+                                 std::chrono::system_clock::time_point endTime,
+                                 int64_t startId,
+                                 uint32_t maxRecords,
+                                 size_t overallRecordsLimit) override
+        {}
 
-        void GetChannels(IChannelVisitor& visitor) override {}
-        void DeleteRecords(TChannelInfo& channel, uint32_t count) override {}
-        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override {}
+        void GetChannels(IChannelVisitor& visitor) override
+        {}
+        void DeleteRecords(TChannelInfo& channel, uint32_t count) override
+        {}
+        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override
+        {}
     };
 
     class TFakeChannelWriter: public IChannelWriter
     {
         WBMQTT::Testing::TLoggedFixture& Fixture;
-        system_clock::time_point         StartTime;
-        std::unique_ptr<TChannelWriter>  ChannelWriter;
+        system_clock::time_point StartTime;
+        std::unique_ptr<TChannelWriter> ChannelWriter;
+
     public:
-        TFakeChannelWriter(WBMQTT::Testing::TLoggedFixture& fixture,
-                           system_clock::time_point         startTime)
+        TFakeChannelWriter(WBMQTT::Testing::TLoggedFixture& fixture, system_clock::time_point startTime)
             : Fixture(fixture),
               StartTime(startTime),
               ChannelWriter(std::make_unique<TChannelWriter>())
         {}
 
-        void WriteChannel(IStorage&                storage, 
-                          TChannel&                channel,
+        void WriteChannel(IStorage& storage,
+                          TChannel& channel,
                           system_clock::time_point writeTime,
-                          const std::string&       groupName) override
+                          const std::string& groupName) override
         {
-            Fixture.Emit() << "Write \"" << groupName << "\" " << channel.ChannelInfo->GetName()
-                           << " " << duration_cast<milliseconds>(writeTime - StartTime).count();
+            Fixture.Emit() << "Write \"" << groupName << "\" " << channel.ChannelInfo->GetName() << " "
+                           << duration_cast<milliseconds>(writeTime - StartTime).count();
             Fixture.Emit() << "  Last value: " << channel.LastValue;
             Fixture.Emit() << "  Changed: " << channel.Changed;
             Fixture.Emit() << "  Accumulator value count: " << channel.Accumulator.ValueCount;
@@ -115,14 +110,14 @@ namespace
     };
 } // namespace
 
-class TDBLoggerTest : public WBMQTT::Testing::TLoggedFixture
+class TDBLoggerTest: public WBMQTT::Testing::TLoggedFixture
 {
 protected:
-    void StoreByTimeout(system_clock::time_point&    systemTime,
-                        steady_clock::time_point&    steadyTime,
-                        steady_clock::time_point&    startSteadyTime,
-                        steady_clock::time_point&    nextSaveTime,
-                        const milliseconds&          expectedNextSaveTime,
+    void StoreByTimeout(system_clock::time_point& systemTime,
+                        steady_clock::time_point& steadyTime,
+                        steady_clock::time_point& startSteadyTime,
+                        steady_clock::time_point& nextSaveTime,
+                        const milliseconds& expectedNextSaveTime,
                         TMqttDbLoggerMessageHandler& handler)
     {
         systemTime += nextSaveTime - steadyTime;
@@ -133,24 +128,24 @@ protected:
         ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
     }
 
-    void StoreByMessage(std::queue<TValueFromMqtt>&     messages,
+    void StoreByMessage(std::queue<TValueFromMqtt>& messages,
                         const system_clock::time_point& systemTime,
                         const steady_clock::time_point& steadyTime,
                         const steady_clock::time_point& startSteadyTime,
-                        steady_clock::time_point&       nextSaveTime,
-                        TMqttDbLoggerMessageHandler&    handler)
+                        steady_clock::time_point& nextSaveTime,
+                        TMqttDbLoggerMessageHandler& handler)
     {
         Emit() << "Store by message " << duration_cast<milliseconds>(steadyTime - startSteadyTime).count();
         nextSaveTime = handler.HandleMessages(messages, steadyTime, systemTime);
     }
 
-    void StoreByMessage(std::queue<TValueFromMqtt>&     messages,
+    void StoreByMessage(std::queue<TValueFromMqtt>& messages,
                         const system_clock::time_point& systemTime,
                         const steady_clock::time_point& steadyTime,
                         const steady_clock::time_point& startSteadyTime,
-                        steady_clock::time_point&       nextSaveTime,
-                        const milliseconds&             expectedNextSaveTime,
-                        TMqttDbLoggerMessageHandler&    handler)
+                        steady_clock::time_point& nextSaveTime,
+                        const milliseconds& expectedNextSaveTime,
+                        TMqttDbLoggerMessageHandler& handler)
     {
         StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
         ASSERT_EQ(duration_cast<milliseconds>(nextSaveTime - startSteadyTime), expectedNextSaveTime);
@@ -162,13 +157,13 @@ TEST_F(TDBLoggerTest, two_groups)
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
+    group.ChangedInterval = seconds(2);
     group.UnchangedInterval = seconds(3);
     group.ControlPatterns.push_back({"wb-adc", "Vin"});
     group.Name = "most specific";
     cache.Groups.push_back(group);
 
-    group.ChangedInterval   = seconds(3);
+    group.ChangedInterval = seconds(3);
     group.UnchangedInterval = seconds(4);
     group.ControlPatterns.push_back({"wb-adc", "A1"});
     group.Name = "most specific2";
@@ -176,11 +171,11 @@ TEST_F(TDBLoggerTest, two_groups)
 
     TFakeStorage storage(*this);
 
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
     auto startSteadyTime = steadyTime;
     auto startSystemTime = systemTime;
-    auto nextSaveTime    = steadyTime;
+    auto nextSaveTime = steadyTime;
 
     TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
 
@@ -210,8 +205,8 @@ TEST_F(TDBLoggerTest, two_groups)
     steadyTime += milliseconds(1000);
     messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
     messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "3.000",  "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "3.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "4.000", "", 0.0, systemTime});
     // steadyTime: 1100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific: next save by ChangedInterval = 2000 ms
@@ -248,7 +243,7 @@ TEST_F(TDBLoggerTest, two_groups)
     systemTime = startSystemTime + milliseconds(3500);
     steadyTime = startSteadyTime + milliseconds(3500);
     messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "4.000", "", 0.0, systemTime});
     // steadyTime: 3500 ms
     // most specific: next save by UnchangedInterval = 6000 ms
     // most specific2: next save by UnchangedInterval = 4000 ms
@@ -297,13 +292,13 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
+    group.ChangedInterval = seconds(2);
     group.UnchangedInterval = seconds(3);
     group.ControlPatterns.push_back({"wb-adc", "Vin"});
     group.Name = "most specific";
     cache.Groups.push_back(group);
 
-    group.ChangedInterval   = seconds(3);
+    group.ChangedInterval = seconds(3);
     group.UnchangedInterval = seconds(4);
     group.ControlPatterns.push_back({"wb-adc", "+"});
     group.Name = "general";
@@ -311,11 +306,11 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
 
     TFakeStorage storage(*this);
 
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
     auto startSteadyTime = steadyTime;
     auto startSystemTime = systemTime;
-    auto nextSaveTime    = steadyTime;
+    auto nextSaveTime = steadyTime;
 
     TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
 
@@ -345,8 +340,8 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     steadyTime += milliseconds(1000);
     messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
     messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "3.000",  "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "3.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "4.000", "", 0.0, systemTime});
     // steadyTime: 1100 ms
     // most specific: next save by UnchangedInterval = 3000 ms
     // most specific: next save by ChangedInterval = 2000 ms
@@ -383,7 +378,7 @@ TEST_F(TDBLoggerTest, two_overlapping_groups)
     systemTime = startSystemTime + milliseconds(3500);
     steadyTime = startSteadyTime + milliseconds(3500);
     messages.push({{"wb-adc", "Vin"}, "14.000", "", 0.0, systemTime});
-    messages.push({{"wb-adc", "A1"},  "4.000",  "", 0.0, systemTime});
+    messages.push({{"wb-adc", "A1"}, "4.000", "", 0.0, systemTime});
     // steadyTime: 3500 ms
     // most specific: next save by UnchangedInterval = 6000 ms
     // general: next save by UnchangedInterval = 4000 ms
@@ -432,7 +427,7 @@ TEST_F(TDBLoggerTest, save_precision)
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(0);
+    group.ChangedInterval = seconds(0);
     group.UnchangedInterval = seconds(0);
     group.ControlPatterns.push_back({"+", "+"});
     group.Name = "all";
@@ -468,42 +463,42 @@ TEST_F(TDBLoggerTest, save_precision)
 TEST(TPrecisionTest, find_precision)
 {
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Precision = 0.01;
         UpdatePrecision(channelData, msg, true);
         ASSERT_EQ(channelData.Precision, 0.01);
     }
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Precision = 0.01;
         UpdatePrecision(channelData, msg, false);
         ASSERT_EQ(channelData.Precision, 0.01);
     }
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Value = "100";
         UpdatePrecision(channelData, msg, true);
         ASSERT_EQ(channelData.Precision, 1.0);
     }
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Value = "100";
         UpdatePrecision(channelData, msg, false);
         ASSERT_EQ(channelData.Precision, 0.0);
     }
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Value = "100.1";
         UpdatePrecision(channelData, msg, true);
         ASSERT_DOUBLE_EQ(channelData.Precision, 0.1);
     }
     {
-        TChannel       channelData;
+        TChannel channelData;
         TValueFromMqtt msg;
         msg.Value = "100.001";
         UpdatePrecision(channelData, msg, true);
@@ -516,21 +511,21 @@ TEST_F(TDBLoggerTest, burst)
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
+    group.ChangedInterval = seconds(2);
     group.UnchangedInterval = seconds(3);
-    group.MaxBurstRecords   = 3;
+    group.MaxBurstRecords = 3;
     group.ControlPatterns.push_back({"+", "+"});
     group.Name = "all";
     cache.Groups.push_back(group);
 
     TFakeStorage storage(*this);
 
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
     auto startSteadyTime = steadyTime;
-    auto nextSaveTime    = steadyTime;
+    auto nextSaveTime = steadyTime;
 
-    std::queue<TValueFromMqtt>  messages;
+    std::queue<TValueFromMqtt> messages;
     TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
     handler.Start(startSteadyTime);
 
@@ -598,7 +593,8 @@ TEST_F(TDBLoggerTest, burst)
     StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(15000), handler);
     ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 2);
 
-    /* BurstRecords = 2 but only one interval without messages is passed. Check that BurstRecords is not decreased */
+    /* BurstRecords = 2 but only one interval without messages is passed. Check
+     * that BurstRecords is not decreased */
 
     // steadyTime: 15000 ms
     // next save by UnchangedInterval = 18000 ms
@@ -662,21 +658,21 @@ TEST_F(TDBLoggerTest, burstSwitch)
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
+    group.ChangedInterval = seconds(2);
     group.UnchangedInterval = seconds(3);
-    group.MaxBurstRecords   = 3;
+    group.MaxBurstRecords = 3;
     group.ControlPatterns.push_back({"+", "+"});
     group.Name = "all";
     cache.Groups.push_back(group);
 
     TFakeStorage storage(*this);
 
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
     auto startSteadyTime = steadyTime;
-    auto nextSaveTime    = steadyTime;
+    auto nextSaveTime = steadyTime;
 
-    std::queue<TValueFromMqtt>  messages;
+    std::queue<TValueFromMqtt> messages;
     TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
     handler.Start(startSteadyTime);
 
@@ -698,30 +694,30 @@ TEST_F(TDBLoggerTest, burstSwitch)
 
 TEST_F(TDBLoggerTest, burstSwitchAndValue)
 {
-    // If max_burst is non zero, TDBLogger will start writing discrete channels before analog channels
-    // It will lead to group records count calculation on cache with channels with ChannelInfo==nullptr
-    // So we will get a segfault
-    // The test check crash fix
+    // If max_burst is non zero, TDBLogger will start writing discrete channels
+    // before analog channels It will lead to group records count calculation on
+    // cache with channels with ChannelInfo==nullptr So we will get a segfault The
+    // test check crash fix
 
     TLoggerCache cache;
 
     TLoggingGroup group;
-    group.ChangedInterval   = seconds(2);
+    group.ChangedInterval = seconds(2);
     group.UnchangedInterval = seconds(3);
-    group.MaxBurstRecords   = 3;
-    group.MaxRecords        = 100;
+    group.MaxBurstRecords = 3;
+    group.MaxRecords = 100;
     group.ControlPatterns.push_back({"+", "+"});
     group.Name = "all";
     cache.Groups.push_back(group);
 
     TFakeStorage storage(*this);
 
-    auto systemTime      = system_clock::now();
-    auto steadyTime      = steady_clock::now();
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
     auto startSteadyTime = steadyTime;
-    auto nextSaveTime    = steadyTime;
+    auto nextSaveTime = steadyTime;
 
-    std::queue<TValueFromMqtt>  messages;
+    std::queue<TValueFromMqtt> messages;
     TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
     handler.Start(startSteadyTime);
 

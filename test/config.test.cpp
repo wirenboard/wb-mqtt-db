@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-class TConfigTest : public testing::Test
+class TConfigTest: public testing::Test
 {
 protected:
     std::string testRootDir;
@@ -30,7 +30,8 @@ TEST_F(TConfigTest, no_file)
 TEST_F(TConfigTest, bad_config)
 {
     for (size_t i = 0; i < 7; ++i) {
-        ASSERT_THROW(LoadConfig(testRootDir + "/bad/bad" + std::to_string(i) + ".conf", schemaFile), std::runtime_error) << "bad" << i <<".conf";
+        ASSERT_THROW(LoadConfig(testRootDir + "/bad/bad" + std::to_string(i) + ".conf", schemaFile), std::runtime_error)
+            << "bad" << i << ".conf";
     }
 }
 

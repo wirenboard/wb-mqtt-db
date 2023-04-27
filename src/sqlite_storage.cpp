@@ -19,7 +19,7 @@ using namespace Utils;
 namespace
 {
     const char* DB_BACKUP_FILE_EXTENSION = ".backup";
-    const int   WB_DB_VERSION            = 6;
+    const int WB_DB_VERSION = 6;
 
     const int UNDEFINED_ID = -1;
     const int CHANNEL_COLUMN = 1;
@@ -32,16 +32,18 @@ namespace
     // Function to optimize database for better performance
     void TuneDatabase(SQLite::Database& db)
     {
-        // The WAL journaling mode uses a write-ahead log instead of a rollback journal to implement transactions.
+        // The WAL journaling mode uses a write-ahead log instead of a rollback
+        // journal to implement transactions.
         // * WAL is significantly faster in most scenarios.
         // * WAL uses many fewer fsync() operations and is thus less vulnerable
         //   to problems on systems where the fsync() system call is broken.
         db.exec("PRAGMA journal_mode=WAL");
 
-        // In WAL mode when synchronous is NORMAL, the WAL file is synchronized before each checkpoint
-        // and the database file is synchronized after each completed checkpoint
-        // and the WAL file header is synchronized when a WAL file begins to be reused after a checkpoint,
-        // but no sync operations occur during most transactions
+        // In WAL mode when synchronous is NORMAL, the WAL file is synchronized before
+        // each checkpoint and the database file is synchronized after each completed
+        // checkpoint and the WAL file header is synchronized when a WAL file begins
+        // to be reused after a checkpoint, but no sync operations occur during most
+        // transactions
         db.exec("PRAGMA synchronous=NORMAL");
     }
 
@@ -92,10 +94,9 @@ TSqliteStorage::TSqliteStorage(const string& dbFile)
     DB->exec("ANALYZE data");
     DB->exec("ANALYZE sqlite_master");
 
-    InsertRowQuery.reset(new SQLite::Statement(
-        *DB,
-        "INSERT INTO data (channel, value, min, max, retained, timestamp) "
-        "VALUES (?, ?, ?, ?, ?, ?)"));
+    InsertRowQuery.reset(new SQLite::Statement(*DB,
+                                               "INSERT INTO data (channel, value, min, max, retained, timestamp) "
+                                               "VALUES (?, ?, ?, ?, ?, ?)"));
 
     CleanChannelQuery.reset(
         new SQLite::Statement(*DB, "DELETE FROM data WHERE channel = ? ORDER BY timestamp ASC LIMIT ?"));
@@ -138,9 +139,9 @@ void TSqliteStorage::CreateTables(int dbVersion)
 
     {
         LOG(Debug) << "Updating database version variable...";
-        SQLite::Statement query(
-            *DB,
-            "INSERT OR REPLACE INTO variables (name, value) VALUES ('db_version', ?)");
+        SQLite::Statement query(*DB,
+                                "INSERT OR REPLACE INTO variables (name, "
+                                "value) VALUES ('db_version', ?)");
         query.bind(1, dbVersion);
         query.exec();
     }
@@ -151,11 +152,13 @@ void TSqliteStorage::CreateIndices()
     LOG(Debug) << "Creating 'data_topic' index on 'data' ('channel')";
     DB->exec("CREATE INDEX IF NOT EXISTS data_topic ON data (channel)");
 
-    // NOTE: the following index is a "low quality" one according to sqlite documentation. However,
-    // reversing the order of columns results in factor of two decrease in SELECT performance. So we
-    // leave it here as it is.
-    LOG(Debug) << "Creating 'data_topic_timestamp' index on 'data' ('channel', 'timestamp')";
-    DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, timestamp)");
+    // NOTE: the following index is a "low quality" one according to sqlite
+    // documentation. However, reversing the order of columns results in factor of
+    // two decrease in SELECT performance. So we leave it here as it is.
+    LOG(Debug) << "Creating 'data_topic_timestamp' index on 'data' ('channel', "
+                  "'timestamp')";
+    DB->exec("CREATE INDEX IF NOT EXISTS data_topic_timestamp ON data (channel, "
+             "timestamp)");
 }
 
 void TSqliteStorage::Load()
@@ -218,7 +221,7 @@ void TSqliteStorage::UpdateDB(int prev_version)
  */
 bool TSqliteStorage::CheckBackupFile(const string& dbFile)
 {
-    string      backup_file = dbFile + DB_BACKUP_FILE_EXTENSION;
+    string backup_file = dbFile + DB_BACKUP_FILE_EXTENSION;
     struct stat buffer;
 
     if (stat(backup_file.c_str(), &buffer) < 0) {
@@ -255,11 +258,11 @@ void TSqliteStorage::RemoveBackupFile(const string& dbFile)
     std::remove(BackupFileName(dbFile).c_str());
 }
 
-void TSqliteStorage::WriteChannel(TChannelInfo&                         channelInfo,
-                                  const std::string&                    value,
-                                  const std::string&                    minimum,
-                                  const std::string&                    maximum,
-                                  bool                                  retained,
+void TSqliteStorage::WriteChannel(TChannelInfo& channelInfo,
+                                  const std::string& value,
+                                  const std::string& minimum,
+                                  const std::string& maximum,
+                                  bool retained,
                                   std::chrono::system_clock::time_point time)
 {
     std::lock_guard<std::mutex> lg(Mutex);
@@ -309,7 +312,8 @@ PChannelInfo TSqliteStorage::CreateChannel(const TChannelName& channelName)
 }
 
 /**
- * @brief Set channel's precision. One must call Commit to finalize writing to storage.
+ * @brief Set channel's precision. One must call Commit to finalize writing to
+ * storage.
  */
 void TSqliteStorage::SetChannelPrecision(TChannelInfo& channelInfo, double precision)
 {
@@ -326,14 +330,13 @@ void TSqliteStorage::SetChannelPrecision(TChannelInfo& channelInfo, double preci
     SetPrecision(channelInfo, precision);
 }
 
-void TSqliteStorage::GetRecordsWithAveragingInterval
-    (IRecordsVisitor&                      visitor,
-     const std::vector<TChannelName>&      channels,
-     std::chrono::system_clock::time_point startTime,
-     std::chrono::system_clock::time_point endTime,
-     int64_t                               startId,
-     uint32_t                              maxRecords,
-     std::chrono::milliseconds             minInterval)
+void TSqliteStorage::GetRecordsWithAveragingInterval(IRecordsVisitor& visitor,
+                                                     const std::vector<TChannelName>& channels,
+                                                     std::chrono::system_clock::time_point startTime,
+                                                     std::chrono::system_clock::time_point endTime,
+                                                     int64_t startId,
+                                                     uint32_t maxRecords,
+                                                     std::chrono::milliseconds minInterval)
 {
     if (minInterval.count() > 0) {
         GetRecordsWithAverage(visitor, channels, startTime, endTime, startId, maxRecords, minInterval);
@@ -342,12 +345,12 @@ void TSqliteStorage::GetRecordsWithAveragingInterval
     }
 }
 
-int TSqliteStorage::BindParams(SQLite::Statement&                    query,
-                               int                                   param_num,
-                               const std::vector<int64_t>&           channelIds,
+int TSqliteStorage::BindParams(SQLite::Statement& query,
+                               int param_num,
+                               const std::vector<int64_t>& channelIds,
                                std::chrono::system_clock::time_point startTime,
                                std::chrono::system_clock::time_point endTime,
-                               int64_t                               startId)
+                               int64_t startId)
 {
     for (auto id: channelIds) {
         query.bind(++param_num, id);
@@ -358,12 +361,12 @@ int TSqliteStorage::BindParams(SQLite::Statement&                    query,
     return param_num;
 }
 
-void TSqliteStorage::GetRecordsWithoutAverage(IRecordsVisitor&                      visitor,
-                                              const std::vector<TChannelName>&      channels,
+void TSqliteStorage::GetRecordsWithoutAverage(IRecordsVisitor& visitor,
+                                              const std::vector<TChannelName>& channels,
                                               std::chrono::system_clock::time_point startTime,
                                               std::chrono::system_clock::time_point endTime,
-                                              int64_t                               startId,
-                                              uint32_t                              maxRecords)
+                                              int64_t startId,
+                                              uint32_t maxRecords)
 {
     auto channelIds = GetChannelIds(channels);
     string queryStr;
@@ -379,13 +382,13 @@ void TSqliteStorage::GetRecordsWithoutAverage(IRecordsVisitor&                  
     ProcessGetRecordsResult(query, visitor);
 }
 
-void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor&                      visitor,
-                                           const std::vector<TChannelName>&      channels,
+void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor& visitor,
+                                           const std::vector<TChannelName>& channels,
                                            std::chrono::system_clock::time_point startTime,
                                            std::chrono::system_clock::time_point endTime,
-                                           int64_t                               startId,
-                                           uint32_t                              maxRecords,
-                                           std::chrono::milliseconds             minInterval)
+                                           int64_t startId,
+                                           uint32_t maxRecords,
+                                           std::chrono::milliseconds minInterval)
 {
     auto channelIds = GetChannelIds(channels);
     string queryStr;
@@ -407,7 +410,7 @@ std::vector<int64_t> TSqliteStorage::GetChannelIds(const std::vector<TChannelNam
 {
     std::vector<int64_t> res;
     for (const auto& channel: channels) {
-        auto pChannel  = FindChannel(channel);
+        auto pChannel = FindChannel(channel);
         if (pChannel) {
             res.push_back(pChannel->GetId());
         }
@@ -415,20 +418,19 @@ std::vector<int64_t> TSqliteStorage::GetChannelIds(const std::vector<TChannelNam
     return res;
 }
 
-void TSqliteStorage::GetRecordsWithLimit
-    (IRecordsVisitor&                      visitor,
-     const std::vector<TChannelName>&      channels,
-     std::chrono::system_clock::time_point startTime,
-     std::chrono::system_clock::time_point endTime,
-     int64_t                               startId,
-     uint32_t                              maxRecords,
-     size_t                                overallRecordsLimit)
+void TSqliteStorage::GetRecordsWithLimit(IRecordsVisitor& visitor,
+                                         const std::vector<TChannelName>& channels,
+                                         std::chrono::system_clock::time_point startTime,
+                                         std::chrono::system_clock::time_point endTime,
+                                         int64_t startId,
+                                         uint32_t maxRecords,
+                                         size_t overallRecordsLimit)
 {
     std::vector<int64_t> withAverage;
     std::vector<int64_t> withoutAverage;
 
     auto channelIds = GetChannelIds(channels);
-    for(const auto& ch: GetRecordsCount(channelIds, startTime, endTime)) {
+    for (const auto& ch: GetRecordsCount(channelIds, startTime, endTime)) {
         if (overallRecordsLimit > 0 && ch.second > overallRecordsLimit) {
             withAverage.emplace_back(ch.first);
         } else {
@@ -463,7 +465,8 @@ void TSqliteStorage::GetRecordsWithLimit
     }
     if (!withAverage.empty()) {
         param_num = BindParams(query, param_num, withAverage, startTime, endTime, startId);
-        auto minInterval = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime) / overallRecordsLimit;
+        auto minInterval =
+            std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime) / overallRecordsLimit;
         query.bind(++param_num, static_cast<int64_t>(minInterval.count()));
     }
     query.bind(++param_num, maxRecords);
@@ -474,7 +477,7 @@ void TSqliteStorage::GetRecordsWithLimit
 void TSqliteStorage::ProcessGetRecordsResult(SQLite::Statement& query, IRecordsVisitor& visitor) const
 {
     std::unordered_map<int, PChannelInfo> channelIdToNameMap;
-    for(const auto& ch: GetChannelsPrivate()) {
+    for (const auto& ch: GetChannelsPrivate()) {
         channelIdToNameMap.insert({ch.second->GetId(), ch.second});
     }
     while (query.executeStep()) {
@@ -488,7 +491,7 @@ void TSqliteStorage::ProcessGetRecordsResult(SQLite::Statement& query, IRecordsV
 void TSqliteStorage::GetChannels(IChannelVisitor& visitor)
 {
     std::lock_guard<std::mutex> lg(Mutex);
-    for (const auto& channel : GetChannelsPrivate()) {
+    for (const auto& channel: GetChannelsPrivate()) {
         visitor.ProcessChannel(channel.second);
     }
 }
@@ -506,15 +509,20 @@ void TSqliteStorage::DeleteRecords(TChannelInfo& channel, uint32_t count)
 
 void TSqliteStorage::DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count)
 {
-    auto ids = Join(channels.cbegin(), channels.cend(), [](const TChannelInfo& ch) { return ch.GetId();}, ",");
+    auto ids = Join(
+        channels.cbegin(),
+        channels.cend(),
+        [](const TChannelInfo& ch) { return ch.GetId(); },
+        ",");
     std::unordered_map<uint64_t, int> deletedRows;
     {
         std::stringstream queryText;
         queryText << "SELECT count(), channel FROM "
-                  << "(SELECT channel FROM data WHERE channel in (" << ids << ") ORDER BY timestamp ASC LIMIT " << count << ") "
+                  << "(SELECT channel FROM data WHERE channel in (" << ids << ") ORDER BY timestamp ASC LIMIT " << count
+                  << ") "
                   << "GROUP BY channel";
         SQLite::Statement query(*DB, queryText.str());
-        while(query.executeStep()) {
+        while (query.executeStep()) {
             deletedRows[query.getColumn(1).getInt64()] = query.getColumn(0).getInt();
         }
     }
@@ -538,13 +546,14 @@ int TSqliteStorage::GetDBVersion()
     return WB_DB_VERSION;
 }
 
-std::unordered_map<int64_t, size_t> TSqliteStorage::GetRecordsCount(const std::vector<int64_t>&           channelIds,
+std::unordered_map<int64_t, size_t> TSqliteStorage::GetRecordsCount(const std::vector<int64_t>& channelIds,
                                                                     std::chrono::system_clock::time_point startTime,
                                                                     std::chrono::system_clock::time_point endTime)
 {
     string queryStr;
 
-    queryStr = "SELECT COUNT(*), channel FROM data INDEXED BY data_topic_timestamp WHERE ";
+    queryStr = "SELECT COUNT(*), channel FROM data INDEXED BY "
+               "data_topic_timestamp WHERE ";
     AddCommonWhereClause(queryStr, channelIds.size());
     queryStr += " GROUP BY channel";
 

@@ -3,10 +3,10 @@
 #include "benchmark.h"
 #include "log.h"
 
+#include <algorithm>
+#include <math.h>
 #include <wblib/json_utils.h>
 #include <wblib/wbmqtt.h>
-#include <math.h>
-#include <algorithm>
 
 using namespace std;
 using namespace std::chrono;
@@ -16,12 +16,14 @@ using namespace WBMQTT;
 
 namespace
 {
-    //! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR) entries
+    //! Records from DB will be deleted on limit * (1 + RECORDS_CLEAR_THRESHOLDR)
+    //! entries
     const float RECORDS_CLEAR_THRESHOLDR = 0.02;
 
     class TGroupsLoader: public IChannelVisitor
     {
         TLoggerCache& Cache;
+
     public:
         TGroupsLoader(TLoggerCache& cache): Cache(cache)
         {}
@@ -37,7 +39,7 @@ namespace
     };
 
     bool MatchPattern(const std::string& devicePattern,
-                      const std::string& controlPattern, 
+                      const std::string& controlPattern,
                       const std::string& device,
                       const std::string& control)
     {
@@ -68,20 +70,19 @@ namespace
         const std::array<const char*, 4> types = {"switch", "alarm", "wo-switch", "pushbutton"};
         return std::find(types.begin(), types.end(), controlType) != types.end();
     }
-}
+} // namespace
 
 namespace WBMQTT
 {
     namespace JSON
     {
 
-        template <> inline bool Is<system_clock::time_point>(const Json::Value& value)
+        template<> inline bool Is<system_clock::time_point>(const Json::Value& value)
         {
             return value.isNumeric();
         }
 
-        template <>
-        inline system_clock::time_point As<system_clock::time_point>(const Json::Value& value)
+        template<> inline system_clock::time_point As<system_clock::time_point>(const Json::Value& value)
         {
             return system_clock::time_point(seconds(value.asUInt64()));
         }
@@ -105,11 +106,7 @@ bool TControlFilter::MatchTopic(const std::string& topic) const
     // /devices/DEVICE/controls/CONTROL
     auto components = StringSplit(topic, MQTT_PATH_DELIMITER);
 
-    if (components.size() < 5       ||
-        components[0] != ""         ||
-        components[1] != "devices"  ||
-        components[3] != "controls")
-    {
+    if (components.size() < 5 || components[0] != "" || components[1] != "devices" || components[3] != "controls") {
         return false;
     }
     for (const auto& control: Controls) {
@@ -124,8 +121,8 @@ bool TAccumulator::Update(const string& payload)
 {
     // try to cast value to double and run stats
     const char* str = payload.c_str();
-    char* end       = nullptr;
-    double value    = strtod(str, &end);
+    char* end = nullptr;
+    double value = strtod(str, &end);
     if (end == str || end != str + payload.length()) {
         return false;
     }
@@ -163,7 +160,7 @@ double TAccumulator::Average() const
 
 bool TLoggingGroup::MatchPatterns(const TChannelName& channelName) const
 {
-    for (const auto& pattern : ControlPatterns) {
+    for (const auto& pattern: ControlPatterns) {
         if (MatchPattern(pattern, channelName)) {
             return true;
         }
@@ -198,13 +195,13 @@ uint32_t GetRecordCount(const TLoggingGroup& group)
     return sum;
 }
 
-TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver                   driver,
-                             const TLoggerCache&             cache,
-                             std::unique_ptr<IStorage>       storage,
-                             PMqttRpcServer                  rpcServer,
+TMQTTDBLogger::TMQTTDBLogger(PDeviceDriver driver,
+                             const TLoggerCache& cache,
+                             std::unique_ptr<IStorage> storage,
+                             PMqttRpcServer rpcServer,
                              std::unique_ptr<IChannelWriter> channelWriter,
-                             std::chrono::seconds            getValuesRpcRequestTimeout)
-    : Cache(cache), 
+                             std::chrono::seconds getValuesRpcRequestTimeout)
+    : Cache(cache),
       Driver(driver),
       Storage(std::move(storage)),
       RpcServer(rpcServer),
@@ -245,18 +242,18 @@ void TMQTTDBLogger::Start()
     auto nextSaveTime = steady_clock::now();
 
     EventHandle = Driver->On<TControlValueEvent>([&](const TControlValueEvent& event) {
-            if (!event.RawValue.empty()) {
-                {
-                    std::lock_guard<std::mutex> lg(Mutex);
-                    MessagesQueue.push({{event.Control->GetDevice()->GetId(), event.Control->GetId()},
-                                        event.RawValue,
-                                        event.Control->GetType(),
-                                        event.Control->GetPrecision(),
-                                        std::chrono::system_clock::now()});
-                }
-                WakeupCondition.notify_all();
+        if (!event.RawValue.empty()) {
+            {
+                std::lock_guard<std::mutex> lg(Mutex);
+                MessagesQueue.push({{event.Control->GetDevice()->GetId(), event.Control->GetId()},
+                                    event.RawValue,
+                                    event.Control->GetType(),
+                                    event.Control->GetPrecision(),
+                                    std::chrono::system_clock::now()});
             }
-        });
+            WakeupCondition.notify_all();
+        }
+    });
     Driver->StartLoop();
     Driver->WaitForReady();
     Driver->SetFilter(Filter);
@@ -269,7 +266,7 @@ void TMQTTDBLogger::Start()
 
     while (Active) {
         steady_clock::time_point currentTime;
-        queue<TValueFromMqtt>    localQueue;
+        queue<TValueFromMqtt> localQueue;
         {
             std::unique_lock<std::mutex> lk(Mutex);
             if (MessagesQueue.empty()) {
@@ -303,33 +300,30 @@ void TMQTTDBLogger::Stop()
 
 // check if current group is ready to process changed values
 // or ready to process unchanged values
-bool ShouldWriteChannel(steady_clock::time_point now,
-                        const TLoggingGroup&     group,
-                        const TChannel&          channel)
+bool ShouldWriteChannel(steady_clock::time_point now, const TLoggingGroup& group, const TChannel& channel)
 {
     if (channel.Changed) {
         return (now >= channel.LastSaved + group.ChangedInterval);
     }
-    return channel.HasUnsavedMessages &&
-           (now >= channel.LastSaved + group.UnchangedInterval) &&
+    return channel.HasUnsavedMessages && (now >= channel.LastSaved + group.UnchangedInterval) &&
            (now >= group.LastUSaved + group.UnchangedInterval);
 }
 
 struct TNextSaveTime
 {
-    bool                     IsEmpty = true;
+    bool IsEmpty = true;
     steady_clock::time_point Time;
 
     void Update(steady_clock::time_point newTime)
     {
-        Time    = (IsEmpty ? newTime : min(Time, newTime));
+        Time = (IsEmpty ? newTime : min(Time, newTime));
         IsEmpty = false;
     }
 };
 
-TMQTTDBLoggerRpcHandler::TMQTTDBLoggerRpcHandler(const TLoggerCache&    cache,
-                                                 IStorage&              storage,
-                                                 std::chrono::seconds   getValuesRpcRequestTimeout)
+TMQTTDBLoggerRpcHandler::TMQTTDBLoggerRpcHandler(const TLoggerCache& cache,
+                                                 IStorage& storage,
+                                                 std::chrono::seconds getValuesRpcRequestTimeout)
     : Cache(cache),
       Storage(storage),
       GetValuesRpcRequestTimeout(getValuesRpcRequestTimeout)
@@ -345,7 +339,7 @@ void TMQTTDBLoggerRpcHandler::Register(TMqttRpcServer& rpcServer)
                              bind(&TMQTTDBLoggerRpcHandler::GetChannels, this, placeholders::_1));
 }
 
-class TJsonChannelsVisitor : public IChannelVisitor
+class TJsonChannelsVisitor: public IChannelVisitor
 {
 public:
     Json::Value Root;
@@ -383,15 +377,15 @@ TJsonRecordsVisitor::TJsonRecordsVisitor(int protocolVersion,
       Timeout(timeout),
       WithMilliseconds(withMilliseconds)
 {
-    StartTime      = steady_clock::now();
+    StartTime = steady_clock::now();
     Root["values"] = Json::Value(Json::arrayValue);
 }
 
-bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                          row,
-                                              int                                   recordId,
-                                              const TChannelInfo&                   channel,
+bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value& row,
+                                              int recordId,
+                                              const TChannelInfo& channel,
                                               std::chrono::system_clock::time_point timestamp,
-                                              bool                                  retain)
+                                              bool retain)
 {
     if (steady_clock::now() - StartTime >= Timeout) {
         wb_throw(TRequestTimeoutException, "get_values");
@@ -408,15 +402,13 @@ bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                      
         if (WithMilliseconds) {
             row["t"] = duration_cast<milliseconds>(timestamp.time_since_epoch()).count() / 1000.0;
         } else {
-            row["t"] =
-                Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+            row["t"] = Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
         }
     } else {
-        row["uid"]     = recordId;
-        row["device"]  = channel.GetName().Device;
+        row["uid"] = recordId;
+        row["device"] = channel.GetName().Device;
         row["control"] = channel.GetName().Control;
-        row["timestamp"] =
-            Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
+        row["timestamp"] = Json::Value::Int64(duration_cast<seconds>(timestamp.time_since_epoch()).count());
     }
 
     row["retain"] = retain;
@@ -428,28 +420,28 @@ bool TJsonRecordsVisitor::CommonProcessRecord(Json::Value&                      
     return true;
 }
 
-bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
-                    const TChannelInfo&                   channel,
-                    const std::string&                    value,
-                    std::chrono::system_clock::time_point timestamp,
-                    bool                                  retain)
+bool TJsonRecordsVisitor::ProcessRecord(int recordId,
+                                        const TChannelInfo& channel,
+                                        const std::string& value,
+                                        std::chrono::system_clock::time_point timestamp,
+                                        bool retain)
 {
     Json::Value row;
     row[(ProtocolVersion == 1) ? "v" : "value"] = value;
     return CommonProcessRecord(row, recordId, channel, timestamp, retain);
 }
 
-bool TJsonRecordsVisitor::ProcessRecord(int                                   recordId,
-                    const TChannelInfo&                   channel,
-                    double                                averageValue,
-                    std::chrono::system_clock::time_point timestamp,
-                    double                                minValue,
-                    double                                maxValue,
-                    bool                                  retain)
+bool TJsonRecordsVisitor::ProcessRecord(int recordId,
+                                        const TChannelInfo& channel,
+                                        double averageValue,
+                                        std::chrono::system_clock::time_point timestamp,
+                                        double minValue,
+                                        double maxValue,
+                                        bool retain)
 {
     Json::Value row;
-    row["min"]                                  = RoundValue(minValue, channel.GetPrecision());
-    row["max"]                                  = RoundValue(maxValue, channel.GetPrecision());
+    row["min"] = RoundValue(minValue, channel.GetPrecision());
+    row["max"] = RoundValue(maxValue, channel.GetPrecision());
     row[(ProtocolVersion == 1) ? "v" : "value"] = RoundValue(averageValue, channel.GetPrecision());
     return CommonProcessRecord(row, recordId, channel, timestamp, retain);
 }
@@ -479,7 +471,7 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     int rowLimit = std::numeric_limits<int>::max() - 1;
     JSON::Get(params, "limit", rowLimit);
 
-    bool withMilliseconds =  params.get("with_milliseconds", false).asBool();
+    bool withMilliseconds = params.get("with_milliseconds", false).asBool();
 
     TJsonRecordsVisitor visitor(protocolVersion, rowLimit, timeout, withMilliseconds);
 
@@ -499,7 +491,7 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     }
 
     std::vector<TChannelName> channels;
-    for (const auto& channelItem : params["channels"]) {
+    for (const auto& channelItem: params["channels"]) {
         if (!(channelItem.isArray() && (channelItem.size() == 2)))
             wb_throw(TBaseException, "'channels' items must be an arrays of size two ");
         channels.emplace_back(channelItem[0u].asString(), channelItem[1u].asString());
@@ -507,15 +499,15 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
 
     if (params.isMember("max_records")) {
         try {
-            // we request one extra row to know whether there are more than 'limit' available
-            Storage.GetRecordsWithLimit
-                (visitor,
-                 channels,
-                 timestamp_gt,
-                 timestamp_lt,
-                 startingRecordId,
-                 rowLimit + 1,
-                 params["max_records"].asUInt());
+            // we request one extra row to know whether there are more than 'limit'
+            // available
+            Storage.GetRecordsWithLimit(visitor,
+                                        channels,
+                                        timestamp_gt,
+                                        timestamp_lt,
+                                        startingRecordId,
+                                        rowLimit + 1,
+                                        params["max_records"].asUInt());
         } catch (const std::exception& e) {
             LOG(Error) << e.what();
             throw;
@@ -535,15 +527,15 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
         auto minInterval = std::chrono::milliseconds(int64_t(minIntervalMs));
 
         try {
-            // we request one extra row to know whether there are more than 'limit' available
-            Storage.GetRecordsWithAveragingInterval
-                (visitor,
-                 channels,
-                 timestamp_gt,
-                 timestamp_lt,
-                 startingRecordId,
-                 rowLimit + 1,
-                 minInterval);
+            // we request one extra row to know whether there are more than 'limit'
+            // available
+            Storage.GetRecordsWithAveragingInterval(visitor,
+                                                    channels,
+                                                    timestamp_gt,
+                                                    timestamp_lt,
+                                                    startingRecordId,
+                                                    rowLimit + 1,
+                                                    minInterval);
         } catch (const std::exception& e) {
             LOG(Error) << e.what();
             throw;
@@ -552,10 +544,10 @@ Json::Value TMQTTDBLoggerRpcHandler::GetValues(const Json::Value& params)
     return visitor.Root;
 }
 
-void TChannelWriter::WriteChannel(IStorage&                storage, 
-                                  TChannel&                channel,
+void TChannelWriter::WriteChannel(IStorage& storage,
+                                  TChannel& channel,
                                   system_clock::time_point writeTime,
-                                  const std::string&       groupName)
+                                  const std::string& groupName)
 {
     if (channel.Accumulator.HasValues()) {
         storage.WriteChannel(*channel.ChannelInfo,
@@ -567,7 +559,7 @@ void TChannelWriter::WriteChannel(IStorage&                storage,
     } else {
         // For single values set time to receive time not to write time
         writeTime = (channel.Changed ? channel.LastDataTime : writeTime);
-        storage.WriteChannel(*channel.ChannelInfo, 
+        storage.WriteChannel(*channel.ChannelInfo,
                              channel.LastValue,
                              std::string(),
                              std::string(),
@@ -601,14 +593,17 @@ void UpdatePrecision(TChannel& channelData, const TValueFromMqtt& msg, bool isNu
     }
 }
 
-
-TMqttDbLoggerMessageHandler::TMqttDbLoggerMessageHandler(TLoggerCache& cache, IStorage& storage, std::unique_ptr<IChannelWriter> channelWriter)
-    : Cache(cache), Storage(storage), ChannelWriter(std::move(channelWriter))
+TMqttDbLoggerMessageHandler::TMqttDbLoggerMessageHandler(TLoggerCache& cache,
+                                                         IStorage& storage,
+                                                         std::unique_ptr<IChannelWriter> channelWriter)
+    : Cache(cache),
+      Storage(storage),
+      ChannelWriter(std::move(channelWriter))
 {}
 
 void TMqttDbLoggerMessageHandler::Start(std::chrono::steady_clock::time_point currentTime)
 {
-    for (auto& group : Cache.Groups) {
+    for (auto& group: Cache.Groups) {
         group.LastUSaved = currentTime;
     }
 }
@@ -624,13 +619,13 @@ void TMqttDbLoggerMessageHandler::WriteChannel(const TChannelName& channelName,
     }
     ChannelWriter->WriteChannel(Storage, channel, writeTime, group.Name);
     channel.Accumulator.Reset();
-    channel.LastSaved          = currentTime;
-    channel.Changed            = false;
+    channel.LastSaved = currentTime;
+    channel.Changed = false;
     channel.HasUnsavedMessages = false;
     CheckChannelOverflow(group, *channel.ChannelInfo);
 }
 
-steady_clock::time_point TMqttDbLoggerMessageHandler::HandleMessages(std::queue<TValueFromMqtt>& messages, 
+steady_clock::time_point TMqttDbLoggerMessageHandler::HandleMessages(std::queue<TValueFromMqtt>& messages,
                                                                      steady_clock::time_point currentTime,
                                                                      system_clock::time_point writeTime)
 {
@@ -647,14 +642,14 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
 
     TNextSaveTime next;
 
-    for (auto& group : Cache.Groups) {
+    for (auto& group: Cache.Groups) {
 
         bool saved = false;
 
-        for (auto& channel : group.Channels) {
-            const char*         saveStatus  = "nothing to save";
+        for (auto& channel: group.Channels) {
+            const char* saveStatus = "nothing to save";
             const TChannelName& channelName = channel.first;
-            TChannel&           channelData = channel.second;
+            TChannel& channelData = channel.second;
             if (ShouldWriteChannel(currentTime, group, channelData)) {
                 saveStatus = (channelData.Changed ? "save changed" : "save UNCHANGED");
                 saved = true;
@@ -694,7 +689,8 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
     return next.Time;
 }
 
-void TMqttDbLoggerMessageHandler::ProcessMessages(std::queue<TValueFromMqtt>& messages, steady_clock::time_point currentTime)
+void TMqttDbLoggerMessageHandler::ProcessMessages(std::queue<TValueFromMqtt>& messages,
+                                                  steady_clock::time_point currentTime)
 {
     for (; !messages.empty(); messages.pop()) {
         SaveMessage(messages.front(), currentTime);
@@ -703,21 +699,22 @@ void TMqttDbLoggerMessageHandler::ProcessMessages(std::queue<TValueFromMqtt>& me
 
 void TMqttDbLoggerMessageHandler::SaveMessage(const TValueFromMqtt& msg, steady_clock::time_point currentTime)
 {
-    for (auto& group : Cache.Groups) {
+    for (auto& group: Cache.Groups) {
         if (group.MatchPatterns(msg.Channel)) {
             auto& channelData = group.GetChannelData(msg.Channel);
             if (::Debug.IsEnabled()) {
-                LOG(Debug) << "\"" << group.Name << "\" " << msg.Channel << ": \"" << msg.Value << "\" " 
-                        << ((msg.Value != channelData.LastValue) ? "IS CHANGED" : "is same");
+                LOG(Debug) << "\"" << group.Name << "\" " << msg.Channel << ": \"" << msg.Value << "\" "
+                           << ((msg.Value != channelData.LastValue) ? "IS CHANGED" : "is same");
             }
 
             bool isNumber = channelData.Accumulator.Update(msg.Value);
             UpdatePrecision(channelData, msg, isNumber);
-            channelData.Changed           |= (msg.Value != channelData.LastValue);
-            channelData.LastValue          = msg.Value;
-            channelData.LastDataTime       = msg.Time;
-            //TODO: It is impossible to get information about retained status from TControlValueEvent. Should we remove the field?
-            channelData.Retained           = false;
+            channelData.Changed |= (msg.Value != channelData.LastValue);
+            channelData.LastValue = msg.Value;
+            channelData.LastDataTime = msg.Time;
+            // TODO: It is impossible to get information about retained status from
+            // TControlValueEvent. Should we remove the field?
+            channelData.Retained = false;
             channelData.HasUnsavedMessages = true;
             if (channelData.FirstMessage) {
                 if (ShouldStartWithMaxBurst(msg.ControlType)) {
@@ -740,9 +737,8 @@ void TMqttDbLoggerMessageHandler::CheckChannelOverflow(const TLoggingGroup& grou
 {
     if (group.MaxChannelRecords > 0) {
         if (channel.GetRecordCount() > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName()
-                      << ", row count " << channel.GetRecordCount() 
-                      << ", limit " << group.MaxChannelRecords;
+            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName() << ", row count "
+                      << channel.GetRecordCount() << ", limit " << group.MaxChannelRecords;
             Storage.DeleteRecords(channel, channel.GetRecordCount() - group.MaxChannelRecords);
         }
     }
@@ -753,15 +749,16 @@ void TMqttDbLoggerMessageHandler::CheckGroupOverflow(const TLoggingGroup& group)
     if (group.MaxRecords > 0) {
         auto groupRecordCount = GetRecordCount(group);
         if (groupRecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Group data limit is reached: group " << group.Name 
-                      << ", row count " << groupRecordCount
+            LOG(Warn) << "Group data limit is reached: group " << group.Name << ", row count " << groupRecordCount
                       << ", limit " << group.MaxRecords;
             Storage.DeleteRecords(GetChannelInfos(group), groupRecordCount - group.MaxRecords);
         }
     }
 }
 
-void TMqttDbLoggerMessageHandler::UpdateBurstRecordsCount(const TLoggingGroup& group, TChannel& channel, steady_clock::time_point currentTime)
+void TMqttDbLoggerMessageHandler::UpdateBurstRecordsCount(const TLoggingGroup& group,
+                                                          TChannel& channel,
+                                                          steady_clock::time_point currentTime)
 {
     if (!channel.HasUnsavedMessages && group.MaxBurstRecords > 0) {
         int newBurstRecords = duration_cast<seconds>(currentTime - channel.LastSaved) / group.ChangedInterval;
