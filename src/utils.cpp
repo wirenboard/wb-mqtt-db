@@ -1,5 +1,5 @@
-#include <fstream>
 #include <chrono>
+#include <fstream>
 
 #include "utils.h"
 
@@ -24,16 +24,17 @@ namespace Utils
     bool isNumber(const std::string& str)
     {
         const char* s = str.c_str();
-        char* end     = nullptr;
+        char* end = nullptr;
         strtod(s, &end);
         return (end != s && end == s + str.length());
     }
 
     bool CallVisitor(IRecordsVisitor& visitor, SQLite::Statement& query, bool withAverage, const TChannelInfo& channel)
     {
-        int  recordId = query.getColumn(UID_COLUMN).getInt();
-        bool retain   = (query.getColumn(RETAINED_COLUMN).getInt() > 0);
-        std::chrono::system_clock::time_point timestamp(std::chrono::milliseconds(query.getColumn(TIMESTAMP_COLUMN).getInt64()));
+        int recordId = query.getColumn(UID_COLUMN).getInt();
+        bool retain = (query.getColumn(RETAINED_COLUMN).getInt() > 0);
+        std::chrono::system_clock::time_point timestamp(
+            std::chrono::milliseconds(query.getColumn(TIMESTAMP_COLUMN).getInt64()));
 
         if (withAverage && !isNumber(query.getColumn(VALUE_COLUMN).getString())) {
             return visitor.ProcessRecord(recordId,
@@ -72,7 +73,8 @@ namespace Utils
 
     void AddWithAverageQuery(std::string& queryStr, size_t channelsCount)
     {
-        queryStr += "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), retained, AVG(value) "
+        queryStr += "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), "
+                    "MAX(max), retained, AVG(value) "
                     "FROM data INDEXED BY data_topic_timestamp WHERE ";
         AddCommonWhereClause(queryStr, channelsCount);
         queryStr += " AND uid > ? GROUP BY (round(timestamp/?)), channel";
@@ -85,4 +87,4 @@ namespace Utils
         AddCommonWhereClause(queryStr, channelsCount);
         queryStr += " AND uid > ?";
     }
-}
+} // namespace Utils

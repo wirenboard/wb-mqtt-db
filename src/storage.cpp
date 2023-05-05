@@ -1,9 +1,7 @@
 #include "storage.h"
 
-TChannelName::TChannelName(const std::string& device, const std::string& control)
-    : Device(device), Control(control)
-{
-}
+TChannelName::TChannelName(const std::string& device, const std::string& control): Device(device), Control(control)
+{}
 
 bool TChannelName::operator==(const TChannelName& rhs) const
 {
@@ -17,7 +15,10 @@ std::ostream& operator<<(std::ostream& out, const TChannelName& name)
 }
 
 TChannelInfo::TChannelInfo(int64_t id, const std::string& device, const std::string& control)
-    : Id(id), RecordCount(0), Name(device, control), Precision(0.0)
+    : Id(id),
+      RecordCount(0),
+      Name(device, control),
+      Precision(0.0)
 {}
 
 const TChannelName& TChannelInfo::GetName() const

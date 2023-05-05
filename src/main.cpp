@@ -6,9 +6,9 @@
 #include "log.h"
 #include "sqlite_storage.h"
 
+#include <wblib/rpc.h>
 #include <wblib/signal_handling.h>
 #include <wblib/wbmqtt.h>
-#include <wblib/rpc.h>
 
 // From LSB
 #define EXIT_INVALIDARGUMENT 2 // Invalid or excess arguments
@@ -19,10 +19,12 @@ using namespace std::chrono;
 
 namespace
 {
-    //! Maximum timeout before forced application termination. Topic cleanup can take a lot of time
+    //! Maximum timeout before forced application termination. Topic cleanup can
+    //! take a lot of time
     const auto DRIVER_STOP_TIMEOUT_S = chrono::seconds(5);
 
-    //! Maximun time to start application. Exceded timeout will case application termination.
+    //! Maximun time to start application. Exceded timeout will case application
+    //! termination.
     const auto DRIVER_INIT_TIMEOUT_S = chrono::seconds(30);
 
     const auto APP_NAME = "wb-mqtt-db";
@@ -30,7 +32,7 @@ namespace
     void PrintUsage()
     {
         cout << "Usage:" << endl
-             << " " << APP_NAME <<" [options]" << endl
+             << " " << APP_NAME << " [options]" << endl
              << "Options:" << endl
              << "  -d       level     enable debuging output:" << endl
              << "                       1 - db only;" << endl
@@ -45,78 +47,75 @@ namespace
              << "  -T       prefix    MQTT topic prefix (optional)" << endl;
     }
 
-    void ParseCommadLine(int                           argc,
-                         char*                         argv[],
-                         WBMQTT::TMosquittoMqttConfig& mqttConfig,
-                         string&                       config)
+    void ParseCommadLine(int argc, char* argv[], WBMQTT::TMosquittoMqttConfig& mqttConfig, string& config)
     {
         int debugLevel = 0;
         int c;
         while ((c = getopt(argc, argv, "d:c:h:H:p:u:P:T:")) != -1) {
             switch (c) {
-            case 'd':
-                debugLevel = stoi(optarg);
-                break;
-            case 'c':
-                config = optarg;
-                break;
-            case 'p':
-                mqttConfig.Port = stoi(optarg);
-                break;
-            case 'h':
-            case 'H': // backward compatibility
-                mqttConfig.Host = optarg;
-                break;
-            case 'T':
-                mqttConfig.Prefix = optarg;
-                break;
-            case 'u':
-                mqttConfig.User = optarg;
-                break;
-            case 'P':
-                mqttConfig.Password = optarg;
-                break;
+                case 'd':
+                    debugLevel = stoi(optarg);
+                    break;
+                case 'c':
+                    config = optarg;
+                    break;
+                case 'p':
+                    mqttConfig.Port = stoi(optarg);
+                    break;
+                case 'h':
+                case 'H': // backward compatibility
+                    mqttConfig.Host = optarg;
+                    break;
+                case 'T':
+                    mqttConfig.Prefix = optarg;
+                    break;
+                case 'u':
+                    mqttConfig.User = optarg;
+                    break;
+                case 'P':
+                    mqttConfig.Password = optarg;
+                    break;
 
-            case '?':
-            default:
-                PrintUsage();
-                exit(EXIT_INVALIDARGUMENT);
+                case '?':
+                default:
+                    PrintUsage();
+                    exit(EXIT_INVALIDARGUMENT);
             }
         }
 
         switch (debugLevel) {
-        case 0:
-            break;
-        case -1:
-            Info.SetEnabled(false);
-            break;
+            case 0:
+                break;
+            case -1:
+                Info.SetEnabled(false);
+                break;
 
-        case -2:
-            WBMQTT::Info.SetEnabled(false);
-            break;
+            case -2:
+                WBMQTT::Info.SetEnabled(false);
+                break;
 
-        case -3:
-            WBMQTT::Info.SetEnabled(false);
-            Info.SetEnabled(false);
-            break;
+            case -3:
+                WBMQTT::Info.SetEnabled(false);
+                Info.SetEnabled(false);
+                break;
 
-        case 1:
-            Debug.SetEnabled(true);
-            break;
+            case 1:
+                Debug.SetEnabled(true);
+                break;
 
-        case 2:
-            WBMQTT::Debug.SetEnabled(true);
-            break;
+            case 2:
+                WBMQTT::Debug.SetEnabled(true);
+                break;
 
-        case 3:
-            WBMQTT::Debug.SetEnabled(true);
-            Debug.SetEnabled(true);
-            break;
+            case 3:
+                WBMQTT::Debug.SetEnabled(true);
+                Debug.SetEnabled(true);
+                break;
 
-        default:
-            cout << "Invalid -d parameter value " << debugLevel << endl;
-            PrintUsage();
-            exit(EXIT_INVALIDARGUMENT);
+            default:
+                cout << "Invalid -d parameter value " << debugLevel << endl;
+                PrintUsage();
+                exit(EXIT_INVALIDARGUMENT);
         }
 
         if (optind < argc) {
@@ -183,13 +182,12 @@ int main(int argc, char* argv[])
         auto backend = WBMQTT::NewDriverBackend(mqttClient);
         auto driver = WBMQTT::NewDriver(WBMQTT::TDriverArgs{}.SetId(APP_NAME).SetBackend(backend));
         auto rpcServer = WBMQTT::NewMqttRpcServer(mqttClient, "db_logger");
-        std::shared_ptr<TMQTTDBLogger> logger(
-            new TMQTTDBLogger(driver,
-                              config.Cache,
-                              std::make_unique<TSqliteStorage>(config.DBFile),
-                              rpcServer,
-                              std::make_unique<TChannelWriter>(),
-                              config.GetValuesRpcRequestTimeout));
+        std::shared_ptr<TMQTTDBLogger> logger(new TMQTTDBLogger(driver,
+                                                                config.Cache,
+                                                                std::make_unique<TSqliteStorage>(config.DBFile),
+                                                                rpcServer,
+                                                                std::make_unique<TChannelWriter>(),
+                                                                config.GetValuesRpcRequestTimeout));
 
         WBMQTT::SignalHandling::OnSignals({SIGINT, SIGTERM}, [=] { logger->Stop(); });
         initialized.Complete();

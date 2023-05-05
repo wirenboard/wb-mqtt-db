@@ -16,7 +16,7 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
     JSON::Get(root, "debug", config.Debug);
     JSON::Get(root, "request_timeout", config.GetValuesRpcRequestTimeout);
 
-    for (const auto& groupItem : root["groups"]) {
+    for (const auto& groupItem: root["groups"]) {
         TLoggingGroup group;
 
         JSON::Get(groupItem, "name", group.Name);
@@ -26,7 +26,7 @@ TMQTTDBLoggerConfig LoadConfig(const std::string& fileName, const std::string& s
         JSON::Get(groupItem, "min_unchanged_interval", group.UnchangedInterval);
         JSON::Get(groupItem, "max_burst", group.MaxBurstRecords);
 
-        for (const auto& channelItem : groupItem["channels"]) {
+        for (const auto& channelItem: groupItem["channels"]) {
             auto name_split = StringSplit(channelItem.asString(), '/');
             if (name_split.size() == 2) {
                 group.ControlPatterns.emplace_back(name_split[0], name_split[1]);

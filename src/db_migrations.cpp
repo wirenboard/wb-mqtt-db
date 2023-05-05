@@ -32,7 +32,6 @@ namespace
                 "group_id VARCHAR(255) "
                 ")  ");
 
-
         db.exec("CREATE TABLE IF NOT EXISTS data ("
                 "uid INTEGER PRIMARY KEY AUTOINCREMENT, "
                 "device INTEGER,"
@@ -40,27 +39,30 @@ namespace
                 "value VARCHAR(255),"
                 "timestamp REAL DEFAULT(julianday('now')),"
                 "group_id INTEGER"
-                ")" );
+                ")");
 
         db.exec("CREATE TABLE IF NOT EXISTS variables ("
                 "name VARCHAR(255) PRIMARY KEY, "
-                "value VARCHAR(255) )" );
+                "value VARCHAR(255) )");
 
         // generate internal integer ids from old data table
-        db.exec("INSERT OR IGNORE INTO devices (device) SELECT device FROM tmp GROUP BY device");
-        db.exec("INSERT OR IGNORE INTO channels (device, control) SELECT device, control FROM tmp "
-                    "GROUP BY device, control");
-        db.exec(
-            "INSERT OR IGNORE INTO groups (group_id) SELECT group_id FROM tmp GROUP BY group_id");
+        db.exec("INSERT OR IGNORE INTO devices (device) SELECT device FROM tmp GROUP "
+                "BY device");
+        db.exec("INSERT OR IGNORE INTO channels (device, control) SELECT device, "
+                "control FROM tmp "
+                "GROUP BY device, control");
+        db.exec("INSERT OR IGNORE INTO groups (group_id) SELECT group_id FROM tmp "
+                "GROUP BY group_id");
 
         // populate data table using values from old data table
-        db.exec(
-            "INSERT INTO data(uid, device, channel,value,timestamp,group_id) "
-            "SELECT uid, devices.int_id, channels.int_id, value, julianday(timestamp), groups.int_id "
-            "FROM tmp "
-            "LEFT JOIN devices ON tmp.device = devices.device "
-            "LEFT JOIN channels ON tmp.device = channels.device AND tmp.control = channels.control "
-            "LEFT JOIN groups ON tmp.group_id = groups.group_id ");
+        db.exec("INSERT INTO data(uid, device, channel,value,timestamp,group_id) "
+                "SELECT uid, devices.int_id, channels.int_id, value, "
+                "julianday(timestamp), groups.int_id "
+                "FROM tmp "
+                "LEFT JOIN devices ON tmp.device = devices.device "
+                "LEFT JOIN channels ON tmp.device = channels.device AND tmp.control "
+                "= channels.control "
+                "LEFT JOIN groups ON tmp.group_id = groups.group_id ");
 
         db.exec("DROP TABLE tmp");
 
@@ -89,22 +91,23 @@ namespace
 
         // create new data table
         db.exec("CREATE TABLE data ("
-                    "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    "device INTEGER,"
-                    "channel INTEGER,"
-                    "value VARCHAR(255),"
-                    "timestamp INTEGER DEFAULT(0),"
-                    "group_id INTEGER,"
-                    "max VARCHAR(255),"
-                    "min VARCHAR(255),"
-                    "retained INTEGER"
-                    ")");
+                "uid INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "device INTEGER,"
+                "channel INTEGER,"
+                "value VARCHAR(255),"
+                "timestamp INTEGER DEFAULT(0),"
+                "group_id INTEGER,"
+                "max VARCHAR(255),"
+                "min VARCHAR(255),"
+                "retained INTEGER"
+                ")");
 
         // copy all data casting timestamps
         db.exec("INSERT INTO data "
-                    "SELECT uid, device, channel, value, "
-                    "CAST((timestamp - 2440587.5) * 86400000 AS INTEGER), group_id, max, min, retained "
-                    "FROM data_old");
+                "SELECT uid, device, channel, value, "
+                "CAST((timestamp - 2440587.5) * 86400000 AS INTEGER), group_id, max, "
+                "min, retained "
+                "FROM data_old");
 
         // drop old data table
         db.exec("DROP TABLE data_old");
@@ -127,12 +130,12 @@ namespace
 
         // save unique channels to new channels table and update keys in data table
         {
-            SQLite::Statement query(
-                db,
-                "SELECT int_id, device, control FROM channels_old ORDER BY device, control");
-            int          prevId = -1;
-            std::string  prevDevice;
-            std::string  prevControl;
+            SQLite::Statement query(db,
+                                    "SELECT int_id, device, control FROM "
+                                    "channels_old ORDER BY device, control");
+            int prevId = -1;
+            std::string prevDevice;
+            std::string prevControl;
             while (query.executeStep()) {
                 std::string curDevice(query.getColumn(1).getString());
                 std::string curControl(query.getColumn(2).getString());
@@ -142,12 +145,10 @@ namespace
                     updateQuery.bind(2, query.getColumn(0).getInt());
                     updateQuery.exec();
                 } else {
-                    prevDevice  = curDevice;
+                    prevDevice = curDevice;
                     prevControl = prevControl;
-                    prevId      = query.getColumn(0).getInt();
-                    SQLite::Statement insertQuery(
-                        db,
-                        "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
+                    prevId = query.getColumn(0).getInt();
+                    SQLite::Statement insertQuery(db, "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
                     insertQuery.bind(1, prevId);
                     insertQuery.bind(2, curDevice);
                     insertQuery.bind(3, curControl);
@@ -226,21 +227,16 @@ namespace
         try {
             db.exec("ALTER TABLE channels ADD COLUMN precision REAL");
         } catch (const SQLite::Exception& e) { // The column could de already added
-            if( e.getErrorCode() != SQLITE_ERROR ) {
+            if (e.getErrorCode() != SQLITE_ERROR) {
                 throw;
             }
         }
 
         db.exec("UPDATE variables SET value=\"6\" WHERE name=\"db_version\"");
     }
-}
+} // namespace
 
 std::vector<ConvertDbFnType> GetMigrations()
 {
-    return {ConvertDb0To1,
-            ConvertDb1To2,
-            ConvertDb2To3,
-            ConvertDb3To4,
-            ConvertDb4To5,
-            ConvertDb5To6};
+    return {ConvertDb0To1, ConvertDb1To2, ConvertDb2To3, ConvertDb3To4, ConvertDb4To5, ConvertDb5To6};
 }

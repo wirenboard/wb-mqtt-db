@@ -1,12 +1,17 @@
-#include <gtest/gtest.h>
 #include "utils.h"
+#include <gtest/gtest.h>
 
-class UtilsTest: public ::testing::Test {};
+class UtilsTest: public ::testing::Test
+{};
 
 TEST_F(UtilsTest, Join)
 {
     std::vector<std::string> v = {"a", "b", "c"};
-    auto res = Utils::Join(v.begin(), v.end(), [](const std::string& s) { return s; }, ", ");
+    auto res = Utils::Join(
+        v.begin(),
+        v.end(),
+        [](const std::string& s) { return s; },
+        ", ");
     ASSERT_EQ(res, "a, b, c");
 }
 
@@ -36,12 +41,19 @@ TEST_F(UtilsTest, AddWithAverageQuery)
 {
     std::string str;
     Utils::AddWithAverageQuery(str, 3);
-    EXPECT_EQ(str, "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), retained, AVG(value) FROM data INDEXED BY data_topic_timestamp WHERE channel IN (?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ? GROUP BY (round(timestamp/?)), channel");
+    EXPECT_EQ(str,
+              "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), "
+              "retained, AVG(value) FROM data INDEXED BY data_topic_timestamp WHERE "
+              "channel IN (?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ? "
+              "GROUP BY (round(timestamp/?)), channel");
 }
 
 TEST_F(UtilsTest, AddWithoutAverageQuery)
 {
     std::string str;
     Utils::AddWithoutAverageQuery(str, 3);
-    EXPECT_EQ(str, "SELECT uid, channel, value, timestamp, min, max, retained, value FROM data INDEXED BY data_topic_timestamp WHERE channel IN (?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ?");
+    EXPECT_EQ(str,
+              "SELECT uid, channel, value, timestamp, min, max, retained, value "
+              "FROM data INDEXED BY data_topic_timestamp WHERE channel IN "
+              "(?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ?");
 }

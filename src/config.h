@@ -11,9 +11,9 @@ const int DEFAULT_TIMEOUT_SEC = 9;
 struct TMQTTDBLoggerConfig
 {
     TLoggerCache Cache;
-    std::string  DBFile;
+    std::string DBFile;
 
-    bool                 Debug                      = false;
+    bool Debug = false;
     std::chrono::seconds GetValuesRpcRequestTimeout = std::chrono::seconds(DEFAULT_TIMEOUT_SEC);
 };
 

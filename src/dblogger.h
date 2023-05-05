@@ -1,13 +1,13 @@
 #pragma once
 
 #include "storage.h"
-#include <queue>
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
+#include <queue>
 
+#include <wblib/filters.h>
 #include <wblib/mqtt.h>
 #include <wblib/rpc.h>
-#include <wblib/filters.h>
 
 /**
  * @brief The class holds minimum, maximum and summary of a series of values
@@ -15,9 +15,9 @@
 struct TAccumulator
 {
     uint32_t ValueCount = 0;
-    double   Sum        = 0.0;
-    double   Min        = 0.0;
-    double   Max        = 0.0;
+    double Sum = 0.0;
+    double Min = 0.0;
+    double Max = 0.0;
 
     //! Clear state. All fields are set to 0
     void Reset();
@@ -71,19 +71,19 @@ struct TChannel
 
 struct TValueFromMqtt
 {
-    TChannelName                          Channel;
-    std::string                           Value;
-    std::string                           ControlType;
-    double                                Precision = 0.0;
+    TChannelName Channel;
+    std::string Value;
+    std::string ControlType;
+    double Precision = 0.0;
     std::chrono::system_clock::time_point Time;
 };
 
 /**
- * @brief Update Precision of the channel according to message received from MQTT.
- *        A value from /meta/precision is used if present.
- *        If /meta/precision is missing and isNumber == true,
- *        try to set precision according to value's fractional part.
- * 
+ * @brief Update Precision of the channel according to message received from
+ * MQTT. A value from /meta/precision is used if present. If /meta/precision is
+ * missing and isNumber == true, try to set precision according to value's
+ * fractional part.
+ *
  * @param channelData channel to update
  * @param msg message from MQTT
  * @param isNumber flag indicating that message contains number
@@ -136,6 +136,7 @@ struct TLoggerCache
 class TControlFilter: public WBMQTT::TDeviceFilter
 {
     std::vector<WBMQTT::TDeviceControlPair> Controls;
+
 public:
     void addControlPatterns(const std::vector<TChannelName>& patterns);
 
@@ -149,27 +150,27 @@ class IChannelWriter
 public:
     virtual ~IChannelWriter() = default;
 
-    virtual void WriteChannel(IStorage&                             storage,
-                              TChannel&                             channel,
+    virtual void WriteChannel(IStorage& storage,
+                              TChannel& channel,
                               std::chrono::system_clock::time_point writeTime,
-                              const std::string&                    groupName) = 0;
+                              const std::string& groupName) = 0;
 };
 
 class TChannelWriter: public IChannelWriter
 {
 public:
-    void WriteChannel(IStorage&                             storage, 
-                      TChannel&                             channel,
+    void WriteChannel(IStorage& storage,
+                      TChannel& channel,
                       std::chrono::system_clock::time_point writeTime,
-                      const std::string&                    groupName) override;
+                      const std::string& groupName) override;
 };
 
 class TMQTTDBLoggerRpcHandler
 {
 public:
-    TMQTTDBLoggerRpcHandler(const TLoggerCache&    cache,
-                            IStorage&              storage,
-                            std::chrono::seconds   getValuesRpcRequestTimeout);
+    TMQTTDBLoggerRpcHandler(const TLoggerCache& cache,
+                            IStorage& storage,
+                            std::chrono::seconds getValuesRpcRequestTimeout);
 
     void Register(WBMQTT::TMqttRpcServer& rpcServer);
 
@@ -177,9 +178,9 @@ private:
     Json::Value GetChannels(const Json::Value& params);
     Json::Value GetValues(const Json::Value& params);
 
-    const TLoggerCache&    Cache;
-    IStorage&              Storage;
-    std::chrono::seconds   GetValuesRpcRequestTimeout;
+    const TLoggerCache& Cache;
+    IStorage& Storage;
+    std::chrono::seconds GetValuesRpcRequestTimeout;
 };
 
 class TMqttDbLoggerMessageHandler
@@ -191,41 +192,43 @@ public:
 
     /**
      * @brief Store messages or average values for next call
-     * 
+     *
      * @return next time to call HandleMessages
      */
-    std::chrono::steady_clock::time_point HandleMessages(std::queue<TValueFromMqtt>& messages, 
+    std::chrono::steady_clock::time_point HandleMessages(std::queue<TValueFromMqtt>& messages,
                                                          std::chrono::steady_clock::time_point currentTime,
                                                          std::chrono::system_clock::time_point writeTime);
-private:
 
+private:
     std::chrono::steady_clock::time_point Store(std::chrono::steady_clock::time_point currentTime,
                                                 std::chrono::system_clock::time_point writeTime);
     void ProcessMessages(std::queue<TValueFromMqtt>& messages, std::chrono::steady_clock::time_point currentTime);
     void CheckChannelOverflow(const TLoggingGroup& group, TChannelInfo& channel);
     void CheckGroupOverflow(const TLoggingGroup& group);
-    void UpdateBurstRecordsCount(const TLoggingGroup& group, TChannel& channel, std::chrono::steady_clock::time_point currentTime);
+    void UpdateBurstRecordsCount(const TLoggingGroup& group,
+                                 TChannel& channel,
+                                 std::chrono::steady_clock::time_point currentTime);
     void SaveMessage(const TValueFromMqtt& msg, std::chrono::steady_clock::time_point currentTime);
-    void WriteChannel(const TChannelName&                   channelName,
-                      const TLoggingGroup&                  group,
+    void WriteChannel(const TChannelName& channelName,
+                      const TLoggingGroup& group,
                       std::chrono::steady_clock::time_point currentTime,
                       std::chrono::system_clock::time_point writeTime,
-                      TChannel&                             channel);
+                      TChannel& channel);
 
-    TLoggerCache&                   Cache;
-    IStorage&                       Storage;
+    TLoggerCache& Cache;
+    IStorage& Storage;
     std::unique_ptr<IChannelWriter> ChannelWriter;
 };
 
 class TMQTTDBLogger
 {
 public:
-    TMQTTDBLogger(WBMQTT::PDeviceDriver           driver,
-                  const TLoggerCache&             cache,
-                  std::unique_ptr<IStorage>       storage,
-                  WBMQTT::PMqttRpcServer          rpcServer,
+    TMQTTDBLogger(WBMQTT::PDeviceDriver driver,
+                  const TLoggerCache& cache,
+                  std::unique_ptr<IStorage> storage,
+                  WBMQTT::PMqttRpcServer rpcServer,
                   std::unique_ptr<IChannelWriter> channelWriter,
-                  std::chrono::seconds            getValuesRpcRequestTimeout);
+                  std::chrono::seconds getValuesRpcRequestTimeout);
 
     ~TMQTTDBLogger();
 
@@ -234,34 +237,34 @@ public:
     void Stop();
 
 private:
-    TLoggerCache                      Cache;
-    WBMQTT::PDeviceDriver             Driver;
-    std::unique_ptr<IStorage>         Storage;
-    WBMQTT::PMqttRpcServer            RpcServer;
-    std::mutex                        Mutex;
-    std::condition_variable           WakeupCondition;
-    bool                              Active;
-    std::queue<TValueFromMqtt>        MessagesQueue;
-    std::shared_ptr<TControlFilter>   Filter;
+    TLoggerCache Cache;
+    WBMQTT::PDeviceDriver Driver;
+    std::unique_ptr<IStorage> Storage;
+    WBMQTT::PMqttRpcServer RpcServer;
+    std::mutex Mutex;
+    std::condition_variable WakeupCondition;
+    bool Active;
+    std::queue<TValueFromMqtt> MessagesQueue;
+    std::shared_ptr<TControlFilter> Filter;
     WBMQTT::PDriverEventHandlerHandle EventHandle;
-    TMqttDbLoggerMessageHandler       MessageHandler;
-    TMQTTDBLoggerRpcHandler           RpcHandler;
+    TMqttDbLoggerMessageHandler MessageHandler;
+    TMQTTDBLoggerRpcHandler RpcHandler;
 };
 
-class TJsonRecordsVisitor : public IRecordsVisitor
+class TJsonRecordsVisitor: public IRecordsVisitor
 {
-    int                                   ProtocolVersion;
-    int                                   RowLimit;
-    int                                   RowCount;
+    int ProtocolVersion;
+    int RowLimit;
+    int RowCount;
     std::chrono::steady_clock::time_point StartTime;
-    std::chrono::steady_clock::duration   Timeout;
-    bool                                  WithMilliseconds;
+    std::chrono::steady_clock::duration Timeout;
+    bool WithMilliseconds;
 
-    bool CommonProcessRecord(Json::Value&                          row,
-                             int                                   recordId,
-                             const TChannelInfo&                   channel,
+    bool CommonProcessRecord(Json::Value& row,
+                             int recordId,
+                             const TChannelInfo& channel,
                              std::chrono::system_clock::time_point timestamp,
-                             bool                                  retain);
+                             bool retain);
 
 public:
     Json::Value Root;
@@ -271,17 +274,17 @@ public:
                         std::chrono::steady_clock::duration timeout,
                         bool withMilliseconds = false);
 
-    bool ProcessRecord(int                                   recordId,
-                       const TChannelInfo&                   channel,
-                       const std::string&                    value,
+    bool ProcessRecord(int recordId,
+                       const TChannelInfo& channel,
+                       const std::string& value,
                        std::chrono::system_clock::time_point timestamp,
-                       bool                                  retain) override;
+                       bool retain) override;
 
-    bool ProcessRecord(int                                   recordId,
-                       const TChannelInfo&                   channel,
-                       double                                averageValue,
+    bool ProcessRecord(int recordId,
+                       const TChannelInfo& channel,
+                       double averageValue,
                        std::chrono::system_clock::time_point timestamp,
-                       double                                minValue,
-                       double                                maxValue,
-                       bool                                  retain) override;
+                       double minValue,
+                       double maxValue,
+                       bool retain) override;
 };

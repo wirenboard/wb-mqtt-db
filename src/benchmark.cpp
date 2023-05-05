@@ -2,8 +2,8 @@
 
 using namespace std::chrono;
 
-TBenchmark::TBenchmark(WBMQTT::TLogger& logger, const std::string& message, bool enabled) 
-    : Message(message), 
+TBenchmark::TBenchmark(WBMQTT::TLogger& logger, const std::string& message, bool enabled)
+    : Message(message),
       Enabled(enabled),
       Logger(logger)
 {
