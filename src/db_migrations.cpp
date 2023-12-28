@@ -146,7 +146,7 @@ namespace
                     updateQuery.exec();
                 } else {
                     prevDevice = curDevice;
-                    prevControl = prevControl;
+                    prevControl = curControl;
                     prevId = query.getColumn(0).getInt();
                     SQLite::Statement insertQuery(db, "INSERT INTO channels(int_id, device, control) VALUES(?, ?, ?)");
                     insertQuery.bind(1, prevId);

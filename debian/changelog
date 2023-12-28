@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.11) stable; urgency=medium
+
+  * Fix clang-tidy issues
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 27 Dec 2023 18:00:00 +0400
+
 wb-mqtt-db (2.8.10) stable; urgency=medium
 
   * Add arm64 build, no functional changes

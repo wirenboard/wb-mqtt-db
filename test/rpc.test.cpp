@@ -20,8 +20,8 @@ namespace
     public:
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture): Fixture(fixture), Id(0)
         {
-            VinChannel = CreateChannel({"wb-adc", "Vin"});
-            A1Channel = CreateChannel({"wb-adc", "A1"});
+            VinChannel = TFakeStorage::CreateChannel({"wb-adc", "Vin"});
+            A1Channel = TFakeStorage::CreateChannel({"wb-adc", "A1"});
         }
 
         PChannelInfo CreateChannel(const TChannelName& channelName) override
