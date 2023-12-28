@@ -69,8 +69,8 @@ test: $(TEST_DIR)/$(TEST_BIN)
 			echo "*** VALGRIND DETECTED ERRORS ***" 1>& 2; \
 			exit 1; \
 		else $(TEST_DIR)/abt.sh show; exit 1; fi; \
-    else \
-        $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
+	else \
+		$(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
 	fi
 
 lcov: test

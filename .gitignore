@@ -11,6 +11,7 @@ test/wb-homa-test
 *.debhelper
 */debian/*.substvars
 build
+compile_commands.json
 
 # Binary
 wb-mqtt-db

@@ -21,7 +21,7 @@ namespace
     const char* DB_BACKUP_FILE_EXTENSION = ".backup";
     const int WB_DB_VERSION = 6;
 
-    const int UNDEFINED_ID = -1;
+    // const int UNDEFINED_ID = -1;
     const int CHANNEL_COLUMN = 1;
 
     string BackupFileName(const string& filename)
