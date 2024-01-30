@@ -9,6 +9,7 @@ test/wb-homa-test
 *.tar.gz
 *.debhelper.log
 *.debhelper
+*.buildinfo
 */debian/*.substvars
 build
 compile_commands.json

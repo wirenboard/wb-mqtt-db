@@ -4,7 +4,7 @@
 #include "log.h"
 
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <wblib/json_utils.h>
 #include <wblib/wbmqtt.h>
 
