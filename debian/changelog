@@ -1,3 +1,9 @@
+wb-mqtt-db (2.8.13) stable; urgency=medium
+
+  * Make data limit messages info-level instead of warning
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 01 Feb 2024 13:41:50 +0600
+
 wb-mqtt-db (2.8.12) stable; urgency=medium
 
   * Fix clang-tidy, no functional changes

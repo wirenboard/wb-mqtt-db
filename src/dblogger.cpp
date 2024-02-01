@@ -737,7 +737,7 @@ void TMqttDbLoggerMessageHandler::CheckChannelOverflow(const TLoggingGroup& grou
 {
     if (group.MaxChannelRecords > 0) {
         if (channel.GetRecordCount() > group.MaxChannelRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Channel data limit is reached: channel " << channel.GetName() << ", row count "
+            LOG(Info) << "Channel data limit is reached: channel " << channel.GetName() << ", row count "
                       << channel.GetRecordCount() << ", limit " << group.MaxChannelRecords;
             Storage.DeleteRecords(channel, channel.GetRecordCount() - group.MaxChannelRecords);
         }
@@ -749,7 +749,7 @@ void TMqttDbLoggerMessageHandler::CheckGroupOverflow(const TLoggingGroup& group)
     if (group.MaxRecords > 0) {
         auto groupRecordCount = GetRecordCount(group);
         if (groupRecordCount > group.MaxRecords * (1 + RECORDS_CLEAR_THRESHOLDR)) {
-            LOG(Warn) << "Group data limit is reached: group " << group.Name << ", row count " << groupRecordCount
+            LOG(Info) << "Group data limit is reached: group " << group.Name << ", row count " << groupRecordCount
                       << ", limit " << group.MaxRecords;
             Storage.DeleteRecords(GetChannelInfos(group), groupRecordCount - group.MaxRecords);
         }
