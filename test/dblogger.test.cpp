@@ -728,3 +728,80 @@ TEST_F(TDBLoggerTest, burstSwitchAndValue)
     StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
     // Must not crash
 }
+
+TEST_F(TDBLoggerTest, several_unchanged)
+{
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval = seconds(2);
+    group.UnchangedInterval = seconds(3);
+    group.MaxBurstRecords = 3;
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime = steadyTime;
+
+    std::queue<TValueFromMqtt> messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    messages.push({{"wb-adc", "Vin0"}, "12.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin1"}, "0.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin2"}, "0.000", "", 0.0, systemTime});
+    // steadyTime: 0 ms
+    // next save by UnchangedInterval = 3000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(1100);
+    steadyTime += milliseconds(1100);
+    messages.push({{"wb-adc", "Vin0"}, "13.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin1"}, "0.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin2"}, "0.000", "", 0.0, systemTime});
+    // steadyTime: 1100 ms
+    // next save by UnchangedInterval = 3000 ms
+    // next save by ChangedInterval = 2000 ms
+    // Vin: last save = 0 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+
+    systemTime += milliseconds(900);
+    steadyTime += milliseconds(900);
+    // steadyTime: 2000 ms
+    // save by ChangedInterval = 2000 ms
+    // next save by UnchangedInterval = 3000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    // steadyTime: 3000 ms
+    // save by UnchangedInterval = 3000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+
+    systemTime += milliseconds(100);
+    steadyTime += milliseconds(100);
+    messages.push({{"wb-adc", "Vin0"}, "14.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin1"}, "0.000", "", 0.0, systemTime});
+    messages.push({{"wb-adc", "Vin2"}, "0.000", "", 0.0, systemTime});
+    // steadyTime: 3100 ms
+    // next save by ChangedInterval = 4000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(4000), handler);
+
+    systemTime += milliseconds(900);
+    steadyTime += milliseconds(900);
+    // steadyTime: 4000 ms
+    // save by ChangedInterval = 4000 ms
+    // next save by UnchangedInterval = 6000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+
+    systemTime += milliseconds(2000);
+    steadyTime += milliseconds(2000);
+    // steadyTime: 6000 ms
+    // save by UnchangedInterval = 6000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(9000), handler);
+}
