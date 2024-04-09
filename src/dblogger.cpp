@@ -645,6 +645,7 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
     for (auto& group: Cache.Groups) {
 
         bool saved = false;
+        bool usaved = false;
 
         for (auto& channel: group.Channels) {
             const char* saveStatus = "nothing to save";
@@ -655,7 +656,7 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
                 saved = true;
 
                 if (!channelData.Changed) {
-                    group.LastUSaved = currentTime;
+                    usaved = true;
                 }
                 WriteChannel(channelName, group, currentTime, writeTime, channelData);
             } else {
@@ -675,6 +676,10 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
 #ifndef NBENCHMARK
             benchmark.Enable();
 #endif
+        }
+
+        if (usaved) {
+            group.LastUSaved = currentTime;
         }
 
         if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
