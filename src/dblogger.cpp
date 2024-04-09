@@ -261,8 +261,7 @@ void TMQTTDBLogger::Start()
 
     RpcServer->Start();
     RpcHandler.Register(*RpcServer);
-
-    MessageHandler.Start(nextSaveTime);
+    bool start = true;
 
     while (Active) {
         steady_clock::time_point currentTime;
@@ -277,6 +276,10 @@ void TMQTTDBLogger::Start()
             }
             MessagesQueue.swap(localQueue);
             currentTime = steady_clock::now();
+            if (start) {
+                MessageHandler.Start(currentTime);
+                start = false;
+            }
         }
         nextSaveTime = MessageHandler.HandleMessages(localQueue, currentTime, system_clock::now());
     }
