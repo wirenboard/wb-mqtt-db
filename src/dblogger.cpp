@@ -261,8 +261,7 @@ void TMQTTDBLogger::Start()
 
     RpcServer->Start();
     RpcHandler.Register(*RpcServer);
-
-    MessageHandler.Start(nextSaveTime);
+    bool start = true;
 
     while (Active) {
         steady_clock::time_point currentTime;
@@ -277,6 +276,10 @@ void TMQTTDBLogger::Start()
             }
             MessagesQueue.swap(localQueue);
             currentTime = steady_clock::now();
+            if (start) {
+                MessageHandler.Start(currentTime);
+                start = false;
+            }
         }
         nextSaveTime = MessageHandler.HandleMessages(localQueue, currentTime, system_clock::now());
     }
@@ -645,6 +648,7 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
     for (auto& group: Cache.Groups) {
 
         bool saved = false;
+        bool usaved = false;
 
         for (auto& channel: group.Channels) {
             const char* saveStatus = "nothing to save";
@@ -655,7 +659,7 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
                 saved = true;
 
                 if (!channelData.Changed) {
-                    group.LastUSaved = currentTime;
+                    usaved = true;
                 }
                 WriteChannel(channelName, group, currentTime, writeTime, channelData);
             } else {
@@ -675,6 +679,10 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
 #ifndef NBENCHMARK
             benchmark.Enable();
 #endif
+        }
+
+        if (usaved) {
+            group.LastUSaved = currentTime;
         }
 
         if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
