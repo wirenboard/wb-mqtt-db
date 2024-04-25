@@ -68,8 +68,12 @@
                             "options": {
                                 "inputAttributes": {
                                     "placeholder": "device/channel"
+                                },
+                                "wb": {
+                                    "data": "devices"
                                 }
-                            }
+                            },
+                            "format": "wb-autocomplete"
                         },
                         "options": {
                             "disable_array_reorder": true,
