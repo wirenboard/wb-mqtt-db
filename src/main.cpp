@@ -175,8 +175,10 @@ int main(int argc, char* argv[])
 
     WBMQTT::SignalHandling::Start();
     try {
-        if (config.Debug)
+        if (config.Debug) {
             Debug.SetEnabled(true);
+            WBMQTT::Debug.SetEnabled(true);
+        }
 
         auto mqttClient(WBMQTT::NewMosquittoMqttClient(mqttConfig));
         auto backend = WBMQTT::NewDriverBackend(mqttClient);
