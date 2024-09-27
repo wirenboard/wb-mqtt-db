@@ -23,40 +23,45 @@ SRC_DIR = src
 SQLITECPP_SRC = thirdparty/SQLiteCpp/src
 SQLITECPP_INCLUDE = thirdparty/SQLiteCpp/include
 
-COMMON_SRCS := $(shell find $(SRC_DIR) $(SQLITECPP_SRC) \( -name *.cpp -or -name *.c \) -and -not -name main.cpp)
+COMMON_SRCS := $(shell find $(SRC_DIR) $(SQLITECPP_SRC) \( -name "*.cpp" -or -name "*.c" \) -and -not -name main.cpp)
 COMMON_OBJS := $(COMMON_SRCS:%=$(BUILD_DIR)/%.o)
 
 CXXFLAGS = -Wall -std=c++14 -I$(SRC_DIR) -I$(SQLITECPP_INCLUDE) -Wno-psabi
-LDFLAGS = -lwbmqtt1 -lsqlite3 -lpthread
+LDFLAGS = -lsqlite3 -lpthread -lwbmqtt1
 
-ifeq ($(DEBUG), 1)
-	CXXFLAGS+=-O0 -g -fprofile-arcs -ftest-coverage
-	LDFLAGS += -lgcov
-else
+ifeq ($(DEBUG),)
 	CXXFLAGS+=-Os -DNDEBUG
+else
+	CXXFLAGS+=-O0 -g --coverage
+	LDFLAGS += --coverage
 endif
 
 TEST_DIR = test
-TEST_SRCS := $(shell find $(TEST_DIR) \( -name *.cpp -or -name *.c \))
+TEST_SRCS := $(shell find $(TEST_DIR) \( -name "*.cpp" -or -name "*.c" \))
 TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_BIN=wb-mqtt-db-test
 TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
 
 export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
 
+VALGRIND_FLAGS = --error-exitcode=180 -q
+
+COV_REPORT ?= $(BUILD_DIR)/cov.html
+GCOVR_FLAGS := --html $(COV_REPORT)
+ifneq ($(COV_FAIL_UNDER),)
+	GCOVR_FLAGS += --fail-under-line $(COV_FAIL_UNDER)
+endif
+
 .PHONY: all clean test
 
 all : $(DB_BIN)
 
-$(DB_BIN): $(COMMON_OBJS) $(BUILD_DIR)/src/main.cpp.o
+$(DB_BIN): $(COMMON_OBJS) $(BUILD_DIR)/$(SRC_DIR)/main.cpp.o
 	$(CXX) $^ $(LDFLAGS) -o $(BUILD_DIR)/$@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(CXXFLAGS)
-
-$(BUILD_DIR)/test/%.o: test/%.cpp
-	$(CXX) -c $(CXXFLAGS) -o $@ $^
 
 $(TEST_DIR)/$(TEST_BIN): $(COMMON_OBJS) $(TEST_OBJS)
 	$(CXX) $^ $(LDFLAGS) $(TEST_LIBS) -o $@ -fno-lto
@@ -64,7 +69,7 @@ $(TEST_DIR)/$(TEST_BIN): $(COMMON_OBJS) $(TEST_OBJS)
 test: $(TEST_DIR)/$(TEST_BIN)
 	rm -f $(TEST_DIR)/*.dat.out
 	if [ "$(shell arch)" != "armv7l" ] && [ "$(CROSS_COMPILE)" = "" ] || [ "$(CROSS_COMPILE)" = "x86_64-linux-gnu-" ]; then \
-		valgrind --error-exitcode=180 -q $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
+		valgrind $(VALGRIND_FLAGS) $(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || \
 		if [ $$? = 180 ]; then \
 			echo "*** VALGRIND DETECTED ERRORS ***" 1>& 2; \
 			exit 1; \
@@ -72,11 +77,8 @@ test: $(TEST_DIR)/$(TEST_BIN)
 	else \
 		$(TEST_DIR)/$(TEST_BIN) $(TEST_ARGS) || { $(TEST_DIR)/abt.sh show; exit 1; } \
 	fi
-
-lcov: test
-ifeq ($(DEBUG), 1)
-	geninfo --no-external -b . -o $(BUILD_DIR)/coverage.info $(BUILD_DIR)/src
-	genhtml $(BUILD_DIR)/coverage.info -o $(BUILD_DIR)/cov_html
+ifneq ($(DEBUG),)
+	gcovr $(GCOVR_FLAGS) $(BUILD_DIR)/$(SRC_DIR) $(BUILD_DIR)/$(TEST_DIR)
 endif
 
 clean:
