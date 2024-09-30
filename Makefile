@@ -82,8 +82,7 @@ ifneq ($(DEBUG),)
 endif
 
 clean:
-	-rm -rf build/release
-	-rm -rf build/debug
+	-rm -rf build
 	-rm -f $(TEST_DIR)/*.dat.out
 	-rm -f $(TEST_DIR)/*.o $(TEST_DIR)/$(TEST_BIN)
 
