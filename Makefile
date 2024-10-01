@@ -94,4 +94,3 @@ install:
 
 	install -Dm0644 wb-mqtt-db.wbconfigs $(DESTDIR)/etc/wb-configs.d/16wb-mqtt-db
 	install -Dm0644 wb-mqtt-db.schema.json -t $(DESTDIR)$(PREFIX)/share/wb-mqtt-confed/schemas
-
