@@ -46,8 +46,8 @@ export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
 
 VALGRIND_FLAGS = --error-exitcode=180 -q
 
-COV_REPORT ?= $(BUILD_DIR)/cov.html
-GCOVR_FLAGS := -e $(SQLITECPP_INCLUDE) -s --html $(COV_REPORT)
+COV_REPORT ?= $(BUILD_DIR)/cov
+GCOVR_FLAGS := -e $(SQLITECPP_INCLUDE) -s --html $(COV_REPORT).html -x $(COV_REPORT).xml
 ifneq ($(COV_FAIL_UNDER),)
 	GCOVR_FLAGS += --fail-under-line $(COV_FAIL_UNDER)
 endif
