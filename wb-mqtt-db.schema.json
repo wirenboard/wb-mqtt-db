@@ -147,7 +147,6 @@
             "_format": "tabs",
 
             "options": {
-                "disable_array_reorder": true,
                 "disable_array_delete_last_row": true,
                 "disable_array_delete_all_rows": true,
                 "disable_collapse": true,
