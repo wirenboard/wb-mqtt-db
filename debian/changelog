@@ -1,3 +1,9 @@
+wb-mqtt-db (2.9.0) stable; urgency=medium
+
+  * Add buttons for moving groups in web interface
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 07 Mar 2025 12:22:08 +0500
+
 wb-mqtt-db (2.8.17) stable; urgency=medium
 
   * Add coverage report generation, no functional changes
