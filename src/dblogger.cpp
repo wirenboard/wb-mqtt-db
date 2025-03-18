@@ -32,7 +32,8 @@ namespace
         {
             for (auto& group: Cache.Groups) {
                 if (group.MatchPatterns(channel->GetName())) {
-                    group.Channels[channel->GetName()].ChannelInfo = channel;
+                    group.GetChannelData(channel->GetName()).ChannelInfo = channel;
+                    return;
                 }
             }
         }

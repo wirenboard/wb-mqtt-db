@@ -1,3 +1,9 @@
+wb-mqtt-db (2.9.1) stable; urgency=medium
+
+  * Fix removing of overflowed records from groups with wildcard patterns
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 17 Mar 2025 15:44:45 +0500
+
 wb-mqtt-db (2.9.0) stable; urgency=medium
 
   * Add buttons for moving groups in web interface
