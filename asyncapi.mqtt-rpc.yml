@@ -1,0 +1,287 @@
+asyncapi: '3.0.0'
+info:
+  title: wb-mqtt-db MQTT-RPC API
+  version: '1.0.0'
+defaultContentType: application/json
+channels:
+  historyGetChannels:
+    address: '/rpc/v1/db_logger/history/get_channels/{clientId}'
+    messages:
+      historyGetChannels:
+        $ref: '#/components/messages/historyGetChannels'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  historyGetChannelsReply:
+    address: '/rpc/v1/db_logger/history/get_channels/{clientId}/reply'
+    messages:
+      historyGetChannelsReply:
+        $ref: '#/components/messages/historyGetChannelsReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  historyGetValues:
+    address: '/rpc/v1/db_logger/history/get_values/{clientId}'
+    messages:
+      historyGetValues:
+        $ref: '#/components/messages/historyGetValues'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  historyGetValuesReply:
+    address: '/rpc/v1/db_logger/history/get_values/{clientId}/reply'
+    messages:
+      historyGetValuesReply:
+        $ref: '#/components/messages/historyGetValuesReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+operations:
+  historyGetChannels:
+    action: send
+    channel:
+      $ref: '#/channels/historyGetChannels'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/historyGetChannels/messages/historyGetChannels'
+    reply:
+      channel:
+        $ref: '#/channels/historyGetChannelsReply'
+      messages:
+        - $ref: '#/channels/historyGetChannelsReply/messages/historyGetChannelsReply'
+  historyGetValues:
+    action: send
+    channel:
+      $ref: '#/channels/historyGetValues'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/historyGetValues/messages/historyGetValues'
+    reply:
+      channel:
+        $ref: '#/channels/historyGetValuesReply'
+      messages:
+        - $ref: '#/channels/historyGetValuesReply/messages/historyGetValuesReply'
+components:
+  messages:
+    historyGetChannels:
+      name: historyGetChannels
+      payload:
+        $ref: '#/components/schemas/historyGetChannelsPayload'
+    historyGetChannelsReply:
+      name: historyGetChannelsReply
+      payload:
+        $ref: '#/components/schemas/historyGetChannelsReplyPayload'
+    historyGetValues:
+      name: historyGetValues
+      payload:
+        $ref: '#/components/schemas/historyGetValuesPayload'
+    historyGetValuesReply:
+      name: historyGetValuesReply
+      payload:
+        $ref: '#/components/schemas/historyGetValuesReplyPayload'
+  schemas:
+    channelResultItem:
+      type: object
+      properties:
+        items:
+          description: Количество зарегистрированных значений канала
+          type: number
+        last_ts:
+          description: Временная метка (UNIX timestamp UTC) последнего зарегистрированного значения
+          type: number
+      required:
+        - items
+        - last_ts
+    channelItem:
+      description: Пара [device, control]
+      type: array
+      items:
+        type: string
+      minItems: 2
+      maxItems: 2
+    valueItemVer0:
+      type: object
+      properties:
+        uid:
+          description: ID записи
+          type: number
+        device:
+          description: Имя устройства
+          type: string
+        control:
+          description: Имя канала
+          type: string
+        timestamp:
+          description: Временная метка значения (UNIX timestamp UTC)
+          type: number
+        min:
+          description: Минимальное значение за интервал
+          type: string
+        max:
+          description: Максимальное значение за интервал
+          type: string
+        value:
+          description: (Среднее) значение за интервал
+          type: string
+        retain:
+          description: retain-флаг для сообщения
+          type: boolean
+      required:
+        - uid
+        - device
+        - control
+        - timestamp
+        - value
+        - retain
+    valueItemVer1:
+      type: object
+      properties:
+        c:
+          description: Внутренний ID канала (для пары device/control)
+          type: number
+        i:
+          description: ID записи
+          type: number
+        v:
+          description: (Среднее) значение за интервал
+          type: string
+        t:
+          description: Временная метка значения (UNIX timestamp UTC). Если в запросе задан параметр *with_milliseconds*, то передаётся число с плавающей запятой, где дробная часть - мс
+          type: number
+        max:
+          description: Максимальное значение за интервал
+          type: string
+        min:
+          description: Минимальное значение за интервал
+          type: string
+        retain:
+          description: retain-флаг для сообщения
+          type: boolean
+      required:
+        - c
+        - i
+        - v
+        - t
+        - retain
+    historyGetChannelsPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+      required:
+        - id
+        - params
+    historyGetChannelsReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            channels:
+              description: Ассоциативный массив, где ключи - имена каналов в формате "device/control"
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/channelResultItem'
+          required:
+            - channels
+      required:
+        - id
+        - result
+    historyGetValuesPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            ver:
+              description: Версия запроса
+              type: number
+              enum:
+                - 0
+                - 1
+              default: 0
+            channels:
+              description: Список каналов
+              type: array
+              items:
+                $ref: '#/components/schemas/channelItem'
+            timestamp:
+              description: Временной интервал
+              type: object
+              properties:
+                gt:
+                  description: Начало интервала, по умолчанию - 0
+                  type: number
+                  default: 0
+                lt:
+                  description: Конец интервала, по умолчанию - текущее время
+                  type: number
+            uid:
+              description: Интервал ID записей
+              type: object
+              properties:
+                gt:
+                  description: Минимальный ID записи
+                  type: number
+            limit:
+              description: Максимальное количество записей в ответе
+              type: number
+            min_interval:
+              description: Минимальный интервал между записями в ответе (в мс)
+              type: number
+              default: 0
+            max_records:
+              description: Максимальное число записей в заданном интервале. Если число записей в базе для запрошенного интервала больше этого параметра, в ответе будут переданы усреднённые значения. Данный параметр имеет более высокий приоритет чем *min_interval*
+              type: number
+            request_timeout:
+              description: Максимальное время выполнения запроса (в секундах). Если за указанное время запрос не будет выполнен, вернётся ошибка "Request timeout" (код -32100, не путать с "MQTT request timeout", возникающей при потере соединения с сервисом)
+              type: number
+            with_milliseconds:
+              description: Присылать в ответе на запрос время с точностью до миллисекунд
+              type: boolean
+              default: false
+          required:
+            - channels
+      required:
+        - id
+        - params
+    historyGetValuesReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            values:
+              description: Массив значений. Значение - JSON-объект, в зависимости от параметра *ver*
+              type: array
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/valueItemVer0'
+                  - $ref: '#/components/schemas/valueItemVer1'
+            has_more:
+              description: В базе остались значения для данных каналов, не попавшие в ответ (например, отсеченные по *limit*)
+              type: boolean
+              default: false
+          required:
+            - values
+      required:
+        - id
+        - result
+  parameters:
+    clientId:
+      description: UUID
+  operationTraits:
+    mqtt:
+      bindings:
+        mqtt:
+          qos: 1
