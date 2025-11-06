@@ -93,6 +93,8 @@ root@wirenboard:~# cat /etc/wb-mqtt-db.conf
 
 `wb-mqtt-db` предоставляет RPC драйвер `db_logger`, который содержит RPC сервис `history`.
 
+[mqtt-rpc API spec](./asyncapi.mqtt-rpc.yml)
+
 Публикация запросов отправляется в топик:
 ```
 /rpc/v1/db_logger/history/<RPC-method>/<client_id>
