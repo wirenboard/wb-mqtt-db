@@ -38,7 +38,26 @@
                     "compact": true,
                     "disable_collapse": true,
                     "wb": {
-                        "disable_panel": true
+                        "disable_panel": true,
+                        "groups": [
+                            {
+                                "id": "write_periods",
+                                "description": "write_periods_description",
+                                "ui_options": {
+                                    "wb": {
+                                        "disable_title": true
+                                    }
+                                }
+                            },
+                            {
+                                "id": "write_options",
+                                "ui_options": {
+                                    "wb": {
+                                        "disable_title": true
+                                    }
+                                }
+                            }
+                        ]
                     }
                 },
 
@@ -58,6 +77,7 @@
                     "channels": {
                         "type": "array",
                         "title": "Channels",
+                        "group": "write_options",
 
                         "_format": "table",
                         "propertyOrder": 8,
@@ -108,8 +128,8 @@
 
                     "min_interval": {
                         "type": "number",
-                        "title": "Minimum time interval between two data points (s)",
-                        "description": "min_interval_description",
+                        "title": "DB write period while publishing changing values (s)",
+                        "group": "write_periods",
                         "propertyOrder": 5,
                         "minimum": 0,
                         "default": 120,
@@ -120,7 +140,8 @@
 
                     "min_unchanged_interval": {
                         "type": "number",
-                        "title": "Minimum time interval between two data points with the same value (s)",
+                        "title": "DB write period while publishing identical values (s)",
+                        "group": "write_periods",
                         "propertyOrder": 6,
                         "minimum": 0,
                         "default": 1200,
@@ -133,6 +154,7 @@
                         "type": "number",
                         "title": "Maximum burst records count",
                         "description": "max_burst_description",
+                        "group": "write_options",
                         "propertyOrder": 7,
                         "default": 30,
                         "minimum": 0,
@@ -177,7 +199,7 @@
         "en": {
             "wb-mqtt-db_description": "Settings of collecting and analizing historical data of MQTT channels",
             "request_timeout_description": "Maximum time to process data request (if no such data in RPC request)",
-            "min_interval_description": "At most one value per specified time interval will be saved",
+            "write_periods_description": "One DB record contains the maximum, minimum and average value for the period",
             "max_burst_description": "Additional records are made if parameter changes quickly. If maximum count reached additional recording stops until parameter stabilize"
         },
         "ru": {
@@ -193,9 +215,9 @@
             "Channel pattern": "Канал",
             "Number of values to store, per channel": "Максимальное количество записей на канал",
             "Number of values to store, per group": "Максимальное количество записей на группу",
-            "Minimum time interval between two data points (s)": "Минимальный интервал записи значений (с)",
-            "min_interval_description": "В течение заданного интервала будет записано не более одного значения",
-            "Minimum time interval between two data points with the same value (s)": "Минимальный интервал записи, если значение не изменилось (с)",
+            "DB write period while publishing changing values (s)": "Период записи в БД при публикации изменяющихся значений (с)",
+            "DB write period while publishing identical values (s)": "Период записи в БД при публикации одинаковых значений (с)",
+            "write_periods_description": "Одна запись в БД содержит максимальное, минимальное и среднее значение за период",
             "Maximum burst records count": "Максимальное количество внеочередных записей",
             "DB file path": "Путь к файлу базы данных",
             "max_burst_description": "При быстром изменении параметра будут записаны дополнительные значения. После достижения максимального количества, дополнительные записи прекращаются до стабилизации параметра"
