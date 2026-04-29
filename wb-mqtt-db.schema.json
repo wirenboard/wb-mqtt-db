@@ -25,6 +25,7 @@
         "groups": {
             "type": "array",
             "title": "Groups",
+            "description": "groups_description",
             "propertyOrder": 3,
 
             "items": {
@@ -199,6 +200,7 @@
         "en": {
             "wb-mqtt-db_description": "Settings of collecting and analizing historical data of MQTT channels",
             "request_timeout_description": "Maximum time to process data request (if no such data in RPC request)",
+            "groups_description": "If a channel is described in multiple groups, it will only be processed in the upper one.",
             "write_periods_description": "One DB record contains the maximum, minimum and average value for the period",
             "max_burst_description": "Additional records are made if parameter changes quickly. If maximum count reached additional recording stops until parameter stabilize"
         },
@@ -208,6 +210,7 @@
             "Enable debug logging": "Включить отладочные сообщения",
             "Default request timeout (s)": "Таймаут запроса данных (с)",
             "request_timeout_description": "Максимальное время для получения данных из истории (если не задано в RPC запросе)",
+            "groups_description": "Если канал описан в нескольких группах, он будет обработан только в верхней.",
             "Groups": "Группы",
             "Group": "Группа",
             "Group name": "Имя группы",

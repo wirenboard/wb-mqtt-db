@@ -4,6 +4,12 @@ wb-mqtt-db (2.9.3) stable; urgency=medium
 
  -- Anton Tarasov <anton.tarasov@wirenboard.com>  Mon, 27 Apr 2026 11:58:19 +0300
 
+wb-mqtt-db (2.9.2) stable; urgency=medium
+
+  * Add group precedence note to schema
+
+ -- Anton Tarasov <anton.tarasov@wirenboard.com>  Mon, 27 Apr 2026 11:40:40 +0300
+
 wb-mqtt-db (2.9.1) stable; urgency=medium
 
   * Fix removing of overflowed records from groups with wildcard patterns
