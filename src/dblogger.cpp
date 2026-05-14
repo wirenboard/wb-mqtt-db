@@ -563,10 +563,18 @@ void TChannelWriter::WriteChannel(IStorage& storage,
     } else {
         // For single values set time to receive time not to write time
         writeTime = (channel.Changed ? channel.LastDataTime : writeTime);
+        // Preserve min/max as LastValue for numeric channels so downstream
+        // bucket aggregation (MIN(min)/MAX(max)) sees a real range across rows.
+        std::string minStr;
+        std::string maxStr;
+        if (channel.Accumulator.ValueCount > 0) {
+            minStr = channel.LastValue;
+            maxStr = channel.LastValue;
+        }
         storage.WriteChannel(*channel.ChannelInfo,
                              channel.LastValue,
-                             std::string(),
-                             std::string(),
+                             minStr,
+                             maxStr,
                              channel.Retained,
                              writeTime);
     }

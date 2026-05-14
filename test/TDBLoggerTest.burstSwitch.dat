@@ -6,8 +6,8 @@ Write "all" wb-adc/Vin 0
   Accumulator value count: 1
 Storage data:
   Value: 0
-  Min: 
-  Max: 
+  Min: 0
+  Max: 0
 Set precision for wb-adc/Vin to 1
 Write "all" wb-adc/Vin 0
   Last value: 1
@@ -15,16 +15,16 @@ Write "all" wb-adc/Vin 0
   Accumulator value count: 1
 Storage data:
   Value: 1
-  Min: 
-  Max: 
+  Min: 1
+  Max: 1
 Write "all" wb-adc/Vin 0
   Last value: 2
   Changed: 1
   Accumulator value count: 1
 Storage data:
   Value: 2
-  Min: 
-  Max: 
+  Min: 2
+  Max: 2
 Commit
 Store by timeout 2000
 Write "all" wb-adc/Vin 2000

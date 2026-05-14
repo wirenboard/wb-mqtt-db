@@ -6,8 +6,8 @@ Write "all" wb-adc/Vin2 0
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Set precision for wb-adc/Vin2 to 0.001
 Create channel wb-adc/Vin1
 Write "all" wb-adc/Vin1 0
@@ -16,8 +16,8 @@ Write "all" wb-adc/Vin1 0
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Set precision for wb-adc/Vin1 to 0.001
 Create channel wb-adc/Vin0
 Write "all" wb-adc/Vin0 0
@@ -26,8 +26,8 @@ Write "all" wb-adc/Vin0 0
   Accumulator value count: 1
 Storage data:
   Value: 12.000
-  Min: 
-  Max: 
+  Min: 12.000
+  Max: 12.000
 Set precision for wb-adc/Vin0 to 0.001
 Commit
 Store by message 1100
@@ -38,8 +38,8 @@ Write "all" wb-adc/Vin0 2000
   Accumulator value count: 1
 Storage data:
   Value: 13.000
-  Min: 
-  Max: 
+  Min: 13.000
+  Max: 13.000
 Commit
 Store by timeout 3000
 Write "all" wb-adc/Vin2 3000
@@ -48,16 +48,16 @@ Write "all" wb-adc/Vin2 3000
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Write "all" wb-adc/Vin1 3000
   Last value: 0.000
   Changed: 0
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Commit
 Store by message 3100
 Store by timeout 4000
@@ -67,8 +67,8 @@ Write "all" wb-adc/Vin0 4000
   Accumulator value count: 1
 Storage data:
   Value: 14.000
-  Min: 
-  Max: 
+  Min: 14.000
+  Max: 14.000
 Commit
 Store by timeout 6000
 Write "all" wb-adc/Vin2 6000
@@ -77,14 +77,14 @@ Write "all" wb-adc/Vin2 6000
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Write "all" wb-adc/Vin1 6000
   Last value: 0.000
   Changed: 0
   Accumulator value count: 1
 Storage data:
   Value: 0.000
-  Min: 
-  Max: 
+  Min: 0.000
+  Max: 0.000
 Commit
