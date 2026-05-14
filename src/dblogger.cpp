@@ -571,12 +571,7 @@ void TChannelWriter::WriteChannel(IStorage& storage,
             minStr = channel.LastValue;
             maxStr = channel.LastValue;
         }
-        storage.WriteChannel(*channel.ChannelInfo,
-                             channel.LastValue,
-                             minStr,
-                             maxStr,
-                             channel.Retained,
-                             writeTime);
+        storage.WriteChannel(*channel.ChannelInfo, channel.LastValue, minStr, maxStr, channel.Retained, writeTime);
     }
     storage.SetChannelPrecision(*channel.ChannelInfo, channel.Precision);
 }
