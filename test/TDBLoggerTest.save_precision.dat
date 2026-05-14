@@ -1,25 +1,25 @@
 Create channel wb-adc/Vin
 Storage data:
   Value: 12.000
-  Min: 
-  Max: 
+  Min: 12.000
+  Max: 12.000
 Set precision for wb-adc/Vin to 0.1
 Commit
 Storage data:
   Value: 12.001
-  Min: 
-  Max: 
+  Min: 12.001
+  Max: 12.001
 Commit
 Create channel wb-adc/A1
 Storage data:
   Value: 13
-  Min: 
-  Max: 
+  Min: 13
+  Max: 13
 Set precision for wb-adc/A1 to 1
 Commit
 Storage data:
   Value: 14.001
-  Min: 
-  Max: 
+  Min: 14.001
+  Max: 14.001
 Set precision for wb-adc/A1 to 0.001
 Commit

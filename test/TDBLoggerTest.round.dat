@@ -10,8 +10,8 @@ Publish: /devices/wb-adc/controls/Vin/meta/precision: '0.1' (QoS 1, retained)
 Publish: /devices/wb-adc/controls/Vin: '12.000' (QoS 1, retained)
 Storage data:
   Value: 12.000
-  Min: 
-  Max: 
+  Min: 12.000
+  Max: 12.000
 Commit
 Publish: /devices/wb-adc/controls/Vin: '13.000' (QoS 1)
 Publish: /devices/wb-adc/controls/Vin: '14.000' (QoS 1)
