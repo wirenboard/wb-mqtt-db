@@ -1,3 +1,9 @@
+wb-mqtt-db (2.10.0) stable; urgency=medium
+
+  * Port for Debian 13
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 02 Jun 2026 16:20:00 +0400
+
 wb-mqtt-db (2.9.3) stable; urgency=medium
 
   * Clarify wb-mqtt-db write period settings

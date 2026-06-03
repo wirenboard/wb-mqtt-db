@@ -26,7 +26,7 @@ SQLITECPP_INCLUDE = thirdparty/SQLiteCpp/include
 COMMON_SRCS := $(shell find $(SRC_DIR) $(SQLITECPP_SRC) \( -name "*.cpp" -or -name "*.c" \) -and -not -name main.cpp)
 COMMON_OBJS := $(COMMON_SRCS:%=$(BUILD_DIR)/%.o)
 
-CXXFLAGS = -Wall -std=c++14 -I$(SRC_DIR) -I$(SQLITECPP_INCLUDE) -Wno-psabi
+CXXFLAGS = -Wall -std=c++20 -I$(SRC_DIR) -I$(SQLITECPP_INCLUDE) -Wno-psabi
 LDFLAGS = -lsqlite3 -lpthread -lwbmqtt1
 
 ifeq ($(DEBUG),)
