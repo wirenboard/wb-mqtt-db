@@ -299,6 +299,14 @@ void TMQTTDBLogger::Stop()
     Driver->RemoveEventHandler(EventHandle);
     WakeupCondition.notify_all();
     RpcServer->Stop();
+
+    // Unsubscribe from all watched topics and wait for the broker to process it
+    // before tearing down the connection. Otherwise the broker keeps pushing
+    // control values into the socket we are about to close and reports a
+    // "Broken pipe" on our disconnect.
+    Driver->SetFilter(GetNoDevicesFilter());
+    Driver->WaitForReady();
+
     Driver->StopLoop();
 }
 
