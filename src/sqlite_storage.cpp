@@ -1,6 +1,8 @@
 #include "sqlite_storage.h"
 #include "SQLiteCpp/SQLiteCpp.h"
 
+#include <sqlite3.h>
+
 #include <fstream>
 #include <sys/stat.h>
 #include <wblib/utils.h>
@@ -51,6 +53,12 @@ namespace
 
 TSqliteStorage::TSqliteStorage(const string& dbFile)
 {
+    if (sqlite3_compileoption_used("ENABLE_UPDATE_DELETE_LIMIT") == 0) {
+        wb_throw(TBaseException,
+                 "libsqlite3 is built without SQLITE_ENABLE_UPDATE_DELETE_LIMIT "
+                 "required for DELETE ... ORDER BY ... LIMIT statements");
+    }
+
     bool isMemoryDb = (dbFile.find(":memory:") != string::npos);
 
     // check if backup file is present; if so, we should try to repair DB
