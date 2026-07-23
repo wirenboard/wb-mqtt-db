@@ -7,11 +7,7 @@ class UtilsTest: public ::testing::Test
 TEST_F(UtilsTest, Join)
 {
     std::vector<std::string> v = {"a", "b", "c"};
-    auto res = Utils::Join(
-        v.begin(),
-        v.end(),
-        [](const std::string& s) { return s; },
-        ", ");
+    auto res = Utils::Join(v.begin(), v.end(), [](const std::string& s) { return s; }, ", ");
     ASSERT_EQ(res, "a, b, c");
 }
 

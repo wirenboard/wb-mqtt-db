@@ -517,11 +517,7 @@ void TSqliteStorage::DeleteRecords(TChannelInfo& channel, uint32_t count)
 
 void TSqliteStorage::DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count)
 {
-    auto ids = Join(
-        channels.cbegin(),
-        channels.cend(),
-        [](const TChannelInfo& ch) { return ch.GetId(); },
-        ",");
+    auto ids = Join(channels.cbegin(), channels.cend(), [](const TChannelInfo& ch) { return ch.GetId(); }, ",");
     std::unordered_map<uint64_t, int> deletedRows;
     {
         std::stringstream queryText;
