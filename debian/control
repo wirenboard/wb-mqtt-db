@@ -4,17 +4,16 @@ Section: misc
 Priority: optional
 Standards-Version: 4.5.1
 Build-Depends: debhelper-compat (= 13),
-               gcovr:all,
-               libgtest-dev,
                libsqlite3-dev,
                libwbmqtt1-5-dev,
-               libwbmqtt1-5-test-utils,
-               pkg-config
+               libwbmqtt1-5-test-utils <!nocheck>,
+               libgtest-dev <!nocheck>,
+               gcovr:all <!nocheck>
 Homepage: https://github.com/wirenboard/wb-mqtt-db
 
 Package: wb-mqtt-db
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libsqlite3-0
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Breaks: wb-mqtt-confed (<< 1.0.2)
 Description: Wiren Board database logger
  wb-mqtt-db is a service which stores values from MQTT controls in data base.

@@ -1,3 +1,9 @@
+wb-mqtt-db (2.10.5) stable; urgency=medium
+
+  * Clean up /etc/wb-mqtt-db.conf on purge
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 11 Aug 2026 13:20:00 +0400
+
 wb-mqtt-db (2.10.4) stable; urgency=medium
 
   * Fix coverage reporting with GNU make 4.4 (trixie): export coverage
