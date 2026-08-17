@@ -1,3 +1,9 @@
+wb-mqtt-db (2.11.0) stable; urgency=medium
+
+  * Use system-wide sqlitecpp
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 17 Aug 2026 18:20:00 +0400
+
 wb-mqtt-db (2.10.5) stable; urgency=medium
 
   * Clean up /etc/wb-mqtt-db.conf on purge
