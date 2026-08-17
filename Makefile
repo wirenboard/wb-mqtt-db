@@ -34,7 +34,7 @@ else
 endif
 
 TEST_DIR = test
-TEST_SRCS := $(shell find $(TEST_DIR) \( -name "*.cpp" -or -name "*.c" \))
+TEST_SRCS := $(shell find $(TEST_DIR) -name "*.cpp")
 TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_BIN=wb-mqtt-db-test
 TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
