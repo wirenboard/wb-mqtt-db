@@ -1,7 +1,7 @@
 #include "sqlite_storage.h"
-#include "SQLiteCpp/SQLiteCpp.h"
+#include <SQLiteCpp/SQLiteCpp.h>
 
-#include <sqlite3.h>
+#include <sqlite3.h> // for sqlite3_compileoption_used
 
 #include <fstream>
 #include <sys/stat.h>

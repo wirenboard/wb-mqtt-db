@@ -47,14 +47,53 @@ namespace
              << "  -T       prefix    MQTT topic prefix (optional)" << endl;
     }
 
+    void SetDebugLevel(const char* optarg)
+    {
+        try {
+            auto debugLevel = stoi(optarg);
+            switch (debugLevel) {
+                case 0:
+                    return;
+                case -1:
+                    Info.SetEnabled(false);
+                    return;
+
+                case -2:
+                    WBMQTT::Info.SetEnabled(false);
+                    return;
+
+                case -3:
+                    WBMQTT::Info.SetEnabled(false);
+                    Info.SetEnabled(false);
+                    return;
+
+                case 1:
+                    Debug.SetEnabled(true);
+                    return;
+
+                case 2:
+                    WBMQTT::Debug.SetEnabled(true);
+                    return;
+
+                case 3:
+                    WBMQTT::Debug.SetEnabled(true);
+                    Debug.SetEnabled(true);
+                    return;
+            }
+        } catch (...) {
+        }
+        cout << "Invalid -d parameter value " << optarg << endl;
+        PrintUsage();
+        exit(EXIT_INVALIDARGUMENT);
+    }
+
     void ParseCommadLine(int argc, char* argv[], WBMQTT::TMosquittoMqttConfig& mqttConfig, string& config)
     {
-        int debugLevel = 0;
         int c;
         while ((c = getopt(argc, argv, "d:c:h:H:p:u:P:T:")) != -1) {
             switch (c) {
                 case 'd':
-                    debugLevel = stoi(optarg);
+                    SetDebugLevel(optarg);
                     break;
                 case 'c':
                     config = optarg;
@@ -81,41 +120,6 @@ namespace
                     PrintUsage();
                     exit(EXIT_INVALIDARGUMENT);
             }
-        }
-
-        switch (debugLevel) {
-            case 0:
-                break;
-            case -1:
-                Info.SetEnabled(false);
-                break;
-
-            case -2:
-                WBMQTT::Info.SetEnabled(false);
-                break;
-
-            case -3:
-                WBMQTT::Info.SetEnabled(false);
-                Info.SetEnabled(false);
-                break;
-
-            case 1:
-                Debug.SetEnabled(true);
-                break;
-
-            case 2:
-                WBMQTT::Debug.SetEnabled(true);
-                break;
-
-            case 3:
-                WBMQTT::Debug.SetEnabled(true);
-                Debug.SetEnabled(true);
-                break;
-
-            default:
-                cout << "Invalid -d parameter value " << debugLevel << endl;
-                PrintUsage();
-                exit(EXIT_INVALIDARGUMENT);
         }
 
         if (optind < argc) {

@@ -4,6 +4,7 @@ Section: misc
 Priority: optional
 Standards-Version: 4.5.1
 Build-Depends: debhelper-compat (= 13),
+               libsqlitecpp-dev,
                libsqlite3-dev,
                libwbmqtt1-5-dev,
                libwbmqtt1-5-test-utils <!nocheck>,

@@ -3,8 +3,8 @@
 #include <sstream>
 #include <string>
 
-#include "SQLiteCpp/SQLiteCpp.h"
 #include "storage.h"
+#include <SQLiteCpp/SQLiteCpp.h>
 
 namespace Utils
 {
