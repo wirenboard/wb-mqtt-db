@@ -1,8 +1,10 @@
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
-  * Use system-wide sqlitecpp
+  * Log that only history RPC is served when no logging groups are configured
+  * Exit with 7 on SIGTERM/SIGINT, 1 on stop timeout
+  * systemd unit: treat exit code 7 as success
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 17 Aug 2026 18:20:00 +0400
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 20 Aug 2026 13:18:25 +0000
 
 wb-mqtt-db (2.10.5) stable; urgency=medium
 

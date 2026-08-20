@@ -20,11 +20,15 @@ PREFIX = /usr
 DB_BIN = wb-mqtt-db
 SRC_DIR = src
 
-COMMON_SRCS := $(shell find $(SRC_DIR) -name "*.cpp" -and -not -name main.cpp)
+SQLITECPP_SRC = thirdparty/SQLiteCpp/src
+SQLITECPP_INCLUDE = thirdparty/SQLiteCpp/include
+
+COMMON_SRCS := $(shell find $(SRC_DIR) $(SQLITECPP_SRC) \( -name "*.cpp" -or -name "*.c" \) -and -not -name main.cpp)
 COMMON_OBJS := $(COMMON_SRCS:%=$(BUILD_DIR)/%.o)
 
-CXXFLAGS = -Wall -std=c++20 -I$(SRC_DIR) -Wno-psabi
-LDFLAGS = -lSQLiteCpp -lsqlite3 -lpthread -lwbmqtt1
+CXXFLAGS = -Wall -std=c++20 -I$(SRC_DIR) -I$(SQLITECPP_INCLUDE) -Wno-psabi
+LDFLAGS = -lsqlite3 -lpthread -lwbmqtt1
+
 ifeq ($(DEBUG),)
 	CXXFLAGS+=-Os -DNDEBUG
 else
@@ -33,7 +37,7 @@ else
 endif
 
 TEST_DIR = test
-TEST_SRCS := $(shell find $(TEST_DIR) -name "*.cpp")
+TEST_SRCS := $(shell find $(TEST_DIR) \( -name "*.cpp" -or -name "*.c" \))
 TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_BIN=wb-mqtt-db-test
 TEST_LIBS=-lgtest -lwbmqtt_test_utils -lpthread
@@ -43,7 +47,7 @@ export TEST_DIR_ABS = $(shell pwd)/$(TEST_DIR)
 VALGRIND_FLAGS = --error-exitcode=180 -q
 
 COV_REPORT ?= $(BUILD_DIR)/cov
-GCOVR_FLAGS := -s --html $(COV_REPORT).html -x $(COV_REPORT).xml
+GCOVR_FLAGS := -e $(SQLITECPP_INCLUDE) -s --html $(COV_REPORT).html -x $(COV_REPORT).xml
 ifneq ($(COV_FAIL_UNDER),)
 	GCOVR_FLAGS += --fail-under-line $(COV_FAIL_UNDER)
 endif

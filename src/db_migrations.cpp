@@ -1,7 +1,7 @@
 #include "db_migrations.h"
 
 #include <iostream>
-#include <sqlite3.h> // for SQLITE_ERROR
+#include <sqlite3.h>
 
 namespace
 {
