@@ -38,7 +38,7 @@ TEST_F(UtilsTest, AddWithAverageQuery)
     std::string str;
     Utils::AddWithAverageQuery(str, 3);
     EXPECT_EQ(str,
-              "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), MAX(max), "
+              "SELECT MAX(uid) AS id, channel, value, MAX(timestamp) AS ts, MIN(min), MAX(max), "
               "retained, AVG(value) FROM data INDEXED BY data_topic_timestamp WHERE "
               "channel IN (?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ? "
               "GROUP BY (round(timestamp/?)), channel");
@@ -49,7 +49,7 @@ TEST_F(UtilsTest, AddWithoutAverageQuery)
     std::string str;
     Utils::AddWithoutAverageQuery(str, 3);
     EXPECT_EQ(str,
-              "SELECT uid, channel, value, timestamp, min, max, retained, value "
+              "SELECT uid AS id, channel, value, timestamp AS ts, min, max, retained, value "
               "FROM data INDEXED BY data_topic_timestamp WHERE channel IN "
               "(?,?,?) AND timestamp > ? AND timestamp < ? AND uid > ?");
 }

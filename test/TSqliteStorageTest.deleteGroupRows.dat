@@ -1,24 +1,4 @@
 ## Delete records from Vin
-Record id: 6
-	Channel: wb-adc/Vin[1]
-	Value: 6
-	Time: 60
-	Retain: 0
-Record id: 7
-	Channel: wb-adc/Vin[1]
-	Value: 7
-	Time: 70
-	Retain: 0
-Record id: 8
-	Channel: wb-adc/Vin[1]
-	Value: 8
-	Time: 80
-	Retain: 0
-Record id: 9
-	Channel: wb-adc/Vin[1]
-	Value: 9
-	Time: 90
-	Retain: 0
 Record id: 10
 	Channel: wb-adc/A1[2]
 	Value: 10
@@ -44,20 +24,40 @@ Record id: 14
 	Value: 50
 	Time: 55
 	Retain: 0
+Record id: 6
+	Channel: wb-adc/Vin[1]
+	Value: 6
+	Time: 60
+	Retain: 0
 Record id: 15
 	Channel: wb-adc/A1[2]
 	Value: 60
 	Time: 65
+	Retain: 0
+Record id: 7
+	Channel: wb-adc/Vin[1]
+	Value: 7
+	Time: 70
 	Retain: 0
 Record id: 16
 	Channel: wb-adc/A1[2]
 	Value: 70
 	Time: 75
 	Retain: 0
+Record id: 8
+	Channel: wb-adc/Vin[1]
+	Value: 8
+	Time: 80
+	Retain: 0
 Record id: 17
 	Channel: wb-adc/A1[2]
 	Value: 80
 	Time: 85
+	Retain: 0
+Record id: 9
+	Channel: wb-adc/Vin[1]
+	Value: 9
+	Time: 90
 	Retain: 0
 Record id: 18
 	Channel: wb-adc/A1[2]
@@ -65,35 +65,35 @@ Record id: 18
 	Time: 95
 	Retain: 0
 ## Delete records from Vin and A1
-Record id: 7
-	Channel: wb-adc/Vin[1]
-	Value: 7
-	Time: 70
-	Retain: 0
-Record id: 8
-	Channel: wb-adc/Vin[1]
-	Value: 8
-	Time: 80
-	Retain: 0
-Record id: 9
-	Channel: wb-adc/Vin[1]
-	Value: 9
-	Time: 90
-	Retain: 0
 Record id: 15
 	Channel: wb-adc/A1[2]
 	Value: 60
 	Time: 65
+	Retain: 0
+Record id: 7
+	Channel: wb-adc/Vin[1]
+	Value: 7
+	Time: 70
 	Retain: 0
 Record id: 16
 	Channel: wb-adc/A1[2]
 	Value: 70
 	Time: 75
 	Retain: 0
+Record id: 8
+	Channel: wb-adc/Vin[1]
+	Value: 8
+	Time: 80
+	Retain: 0
 Record id: 17
 	Channel: wb-adc/A1[2]
 	Value: 80
 	Time: 85
+	Retain: 0
+Record id: 9
+	Channel: wb-adc/Vin[1]
+	Value: 9
+	Time: 90
 	Retain: 0
 Record id: 18
 	Channel: wb-adc/A1[2]
