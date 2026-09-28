@@ -379,7 +379,7 @@ void TSqliteStorage::GetRecordsWithoutAverage(IRecordsVisitor& visitor,
     auto channelIds = GetChannelIds(channels);
     string queryStr;
     AddWithoutAverageQuery(queryStr, channelIds.size());
-    queryStr += " ORDER BY uid ASC LIMIT ?";
+    queryStr += " ORDER BY ts ASC, id ASC LIMIT ?";
 
     std::lock_guard<std::mutex> lg(Mutex);
 
@@ -401,7 +401,7 @@ void TSqliteStorage::GetRecordsWithAverage(IRecordsVisitor& visitor,
     auto channelIds = GetChannelIds(channels);
     string queryStr;
     AddWithAverageQuery(queryStr, channelIds.size());
-    queryStr += " ORDER BY uid ASC LIMIT ?";
+    queryStr += " ORDER BY ts ASC, id ASC LIMIT ?";
 
     std::lock_guard<std::mutex> lg(Mutex);
 
@@ -461,7 +461,7 @@ void TSqliteStorage::GetRecordsWithLimit(IRecordsVisitor& visitor,
         // No channels to select
         return;
     }
-    queryStr += " ORDER BY uid ASC LIMIT ?";
+    queryStr += " ORDER BY ts ASC, id ASC LIMIT ?";
 
     std::lock_guard<std::mutex> lg(Mutex);
 

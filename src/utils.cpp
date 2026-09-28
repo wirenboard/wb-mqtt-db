@@ -73,7 +73,7 @@ namespace Utils
 
     void AddWithAverageQuery(std::string& queryStr, size_t channelsCount)
     {
-        queryStr += "SELECT MAX(uid), channel, value, MAX(timestamp), MIN(min), "
+        queryStr += "SELECT MAX(uid) AS id, channel, value, MAX(timestamp) AS ts, MIN(min), "
                     "MAX(max), retained, AVG(value) "
                     "FROM data INDEXED BY data_topic_timestamp WHERE ";
         AddCommonWhereClause(queryStr, channelsCount);
@@ -82,7 +82,7 @@ namespace Utils
 
     void AddWithoutAverageQuery(std::string& queryStr, size_t channelsCount)
     {
-        queryStr += "SELECT uid, channel, value, timestamp, min, max, retained, value "
+        queryStr += "SELECT uid AS id, channel, value, timestamp AS ts, min, max, retained, value "
                     "FROM data INDEXED BY data_topic_timestamp WHERE ";
         AddCommonWhereClause(queryStr, channelsCount);
         queryStr += " AND uid > ?";

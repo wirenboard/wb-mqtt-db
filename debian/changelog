@@ -1,3 +1,9 @@
+wb-mqtt-db (2.12.0) stable; urgency=medium
+
+  * Order history records by timestamp instead of record id
+
+ -- Ilya Titov <ilya.titov@wirenboard.com>  Mon, 28 Sep 2026 12:22:00 +0300
+
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
   * Use system-wide sqlitecpp
