@@ -1,3 +1,10 @@
+wb-mqtt-db (2.12.0) stable; urgency=medium
+
+  * Fix boolean value aggregation: save every switch, alarm and wo-switch
+    state change immediately, regardless of min_interval and max_burst
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 08 Oct 2026 18:20:00 +0400
+
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
   * Use system-wide sqlitecpp

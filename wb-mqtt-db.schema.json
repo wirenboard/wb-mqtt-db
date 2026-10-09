@@ -201,8 +201,8 @@
             "wb-mqtt-db_description": "Settings of collecting and analizing historical data of MQTT channels",
             "request_timeout_description": "Maximum time to process data request (if no such data in RPC request)",
             "groups_description": "If a channel is described in multiple groups, it will only be processed in the upper one.",
-            "write_periods_description": "One DB record contains the maximum, minimum and average value for the period",
-            "max_burst_description": "Additional records are made if parameter changes quickly. If maximum count reached additional recording stops until parameter stabilize"
+            "write_periods_description": "One DB record contains the maximum, minimum and average value for the period. Switch, alarm and wo-switch channels store every state change immediately.",
+            "max_burst_description": "Additional records are made if parameter changes quickly. If maximum count reached additional recording stops until parameter stabilize. Does not limit state changes of switch, alarm and wo-switch channels."
         },
         "ru": {
             "MQTT History Configuration": "История данных MQTT",
@@ -220,10 +220,10 @@
             "Number of values to store, per group": "Максимальное количество записей на группу",
             "DB write period while publishing changing values (s)": "Период записи в БД при публикации изменяющихся значений (с)",
             "DB write period while publishing identical values (s)": "Период записи в БД при публикации одинаковых значений (с)",
-            "write_periods_description": "Одна запись в БД содержит максимальное, минимальное и среднее значение за период",
+            "write_periods_description": "Одна запись в БД содержит максимальное, минимальное и среднее значение за период. Для switch, alarm и wo-switch каждое изменение сохраняется сразу.",
             "Maximum burst records count": "Максимальное количество внеочередных записей",
             "DB file path": "Путь к файлу базы данных",
-            "max_burst_description": "При быстром изменении параметра будут записаны дополнительные значения. После достижения максимального количества, дополнительные записи прекращаются до стабилизации параметра"
+            "max_burst_description": "При быстром изменении параметра будут записаны дополнительные значения. После достижения максимального количества, дополнительные записи прекращаются до стабилизации параметра. Не ограничивает изменения состояний switch, alarm и wo-switch."
         }
     }
 }
