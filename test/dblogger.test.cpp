@@ -677,21 +677,27 @@ TEST_F(TDBLoggerTest, burstSwitch)
     handler.Start(startSteadyTime);
 
     for (size_t i = 0; i < 5; ++i) {
-        messages.push({{"wb-adc", "Vin"}, std::to_string(i % 2), "switch", 0.0, systemTime});
+        messages.push({{"wb-adc", "Vin"}, std::to_string(i), "switch", 0.0, systemTime});
     }
     // steadyTime: 0 ms
     // next save by UnchangedInterval = 3000 ms
-    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    // next save by ChangedInterval = 2000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
     ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
 
-    // All transitions were written while processing the queue.
-    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+    // steadyTime: 2000 ms
+    // next save by UnchangedInterval = 3000 ms
+    // Vin: last save = 2000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
 }
 
 TEST_F(TDBLoggerTest, burstSwitchAndValue)
 {
-    // State channels are written before pending analog channels. Group overflow
-    // checks must skip channels whose ChannelInfo has not been created yet.
+    // If max_burst is non zero, TDBLogger will start writing discrete channels
+    // before analog channels It will lead to group records count calculation on
+    // cache with channels with ChannelInfo==nullptr So we will get a segfault The
+    // test check crash fix
 
     TLoggerCache cache;
 
@@ -721,114 +727,6 @@ TEST_F(TDBLoggerTest, burstSwitchAndValue)
     }
     StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
     // Must not crash
-}
-
-TEST(TDBLoggerMessageHandlerTest, boolean_values_are_not_aggregated)
-{
-    for (const std::string type: {"switch", "alarm", "wo-switch"}) {
-        for (int maxBurst: {0, 3}) {
-            SCOPED_TRACE(type + ", max_burst=" + std::to_string(maxBurst));
-            TLoggerCache cache;
-            TLoggingGroup group;
-            group.ControlPatterns.push_back({"+", "+"});
-            group.ChangedInterval = seconds(120);
-            group.UnchangedInterval = seconds(1200);
-            group.MaxBurstRecords = maxBurst;
-            cache.Groups.push_back(group);
-
-            TSqliteStorage storage(":memory:");
-            TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TChannelWriter>());
-            auto systemTime = system_clock::time_point(seconds(1000));
-            auto steadyTime = steady_clock::time_point(seconds(1000));
-            handler.Start(steadyTime);
-
-            // More transitions than max_burst, with duplicates in the same batch.
-            std::queue<TValueFromMqtt> messages;
-            for (int i = 0; i < 5; ++i) {
-                messages.push({{"test", type}, std::to_string(i % 2), type, 0.0, systemTime + milliseconds(2 * i + 1)});
-                messages.push({{"test", type}, std::to_string(i % 2), type, 0.0, systemTime + milliseconds(2 * i + 2)});
-            }
-            handler.HandleMessages(messages, steadyTime + seconds(1), systemTime + seconds(1));
-
-            TJsonRecordsVisitor visitor(1, 100, seconds(10), true);
-            storage.GetRecordsWithAveragingInterval(visitor,
-                                                    {{"test", type}},
-                                                    systemTime,
-                                                    systemTime + seconds(2),
-                                                    -1,
-                                                    100,
-                                                    milliseconds(0));
-            const auto& rows = visitor.Root["values"];
-            ASSERT_EQ(rows.size(), 5u);
-            for (unsigned int i = 0; i < rows.size(); ++i) {
-                EXPECT_EQ(rows[i]["v"].asString(), std::to_string(i % 2));
-                EXPECT_DOUBLE_EQ(rows[i]["t"].asDouble(), 1000.0 + (2 * i + 1) / 1000.0);
-                EXPECT_FALSE(rows[i].isMember("min"));
-                EXPECT_FALSE(rows[i].isMember("max"));
-            }
-
-            // The final duplicate is saved only when the unchanged interval expires.
-            auto channel = cache.Groups[0].Channels.at({"test", type}).ChannelInfo;
-            handler.HandleMessages(messages, steadyTime + seconds(120), systemTime + seconds(120));
-            EXPECT_EQ(channel->GetRecordCount(), 5u);
-            handler.HandleMessages(messages, steadyTime + seconds(1201), systemTime + seconds(1201));
-            EXPECT_EQ(channel->GetRecordCount(), 6u);
-            handler.HandleMessages(messages, steadyTime + seconds(2401), systemTime + seconds(2401));
-            EXPECT_EQ(channel->GetRecordCount(), 6u);
-        }
-    }
-}
-
-TEST(TDBLoggerMessageHandlerTest, group_overflow_is_trimmed_once_per_batch)
-{
-    class TCountingStorage: public TSqliteStorage
-    {
-    public:
-        int GroupDeletions = 0;
-
-        TCountingStorage(): TSqliteStorage(":memory:")
-        {}
-
-        using TSqliteStorage::DeleteRecords;
-
-        void DeleteRecords(const std::vector<std::reference_wrapper<TChannelInfo>>& channels, uint32_t count) override
-        {
-            ++GroupDeletions;
-            TSqliteStorage::DeleteRecords(channels, count);
-        }
-    };
-
-    for (const std::string type: {"switch", "pushbutton"}) {
-        SCOPED_TRACE(type);
-        TLoggerCache cache;
-        TLoggingGroup group;
-        group.ControlPatterns.push_back({"+", "+"});
-        group.ChangedInterval = seconds(120);
-        group.UnchangedInterval = seconds(1200);
-        group.MaxBurstRecords = 30;
-        group.MaxRecords = 3;
-        cache.Groups.push_back(group);
-
-        TCountingStorage storage;
-        TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TChannelWriter>());
-        auto systemTime = system_clock::time_point(seconds(1000));
-        auto steadyTime = steady_clock::time_point(seconds(1000));
-        handler.Start(steadyTime);
-
-        // All writes happen during message processing, leaving nothing for Store() to write.
-        std::queue<TValueFromMqtt> messages;
-        for (int i = 0; i < 8; ++i) {
-            messages.push({{"test", std::to_string(i)}, "1", type, 0.0, systemTime + milliseconds(i)});
-        }
-        handler.HandleMessages(messages, steadyTime + seconds(1), systemTime + seconds(1));
-
-        EXPECT_EQ(storage.GroupDeletions, 1);
-        EXPECT_EQ(GetRecordCount(cache.Groups[0]), 3u);
-        for (int i = 0; i < 8; ++i) {
-            EXPECT_EQ(cache.Groups[0].Channels.at({"test", std::to_string(i)}).ChannelInfo->GetRecordCount(),
-                      i < 5 ? 0 : 1);
-        }
-    }
 }
 
 TEST_F(TDBLoggerTest, several_unchanged)

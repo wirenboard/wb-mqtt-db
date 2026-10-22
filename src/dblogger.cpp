@@ -71,11 +71,6 @@ namespace
         const std::array<const char*, 4> types = {"switch", "alarm", "wo-switch", "pushbutton"};
         return std::find(types.begin(), types.end(), controlType) != types.end();
     }
-
-    bool IsStateControlType(const std::string& controlType)
-    {
-        return controlType == "switch" || controlType == "alarm" || controlType == "wo-switch";
-    }
 } // namespace
 
 namespace WBMQTT
@@ -688,9 +683,8 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
             }
         }
 
-        // Include immediate state and burst writes made while processing the batch.
-        CheckGroupOverflow(group);
         if (saved) {
+            CheckGroupOverflow(group);
 #ifndef NBENCHMARK
             benchmark.Enable();
 #endif
@@ -739,15 +733,6 @@ void TMqttDbLoggerMessageHandler::SaveMessage(const TValueFromMqtt& msg, steady_
             // TControlValueEvent. Should we remove the field?
             channelData.Retained = false;
             channelData.HasUnsavedMessages = true;
-            if (IsStateControlType(msg.ControlType)) {
-                // Save transitions before the next queued message can overwrite them.
-                channelData.Accumulator.Reset();
-                if (channelData.FirstMessage || channelData.Changed) {
-                    WriteChannel(msg.Channel, group, currentTime, msg.Time, channelData);
-                }
-                channelData.FirstMessage = false;
-                return;
-            }
             if (channelData.FirstMessage) {
                 if (ShouldStartWithMaxBurst(msg.ControlType)) {
                     channelData.BurstRecords = group.MaxBurstRecords;
@@ -756,6 +741,7 @@ void TMqttDbLoggerMessageHandler::SaveMessage(const TValueFromMqtt& msg, steady_
             }
             if (channelData.BurstRecords) {
                 WriteChannel(msg.Channel, group, currentTime, msg.Time, channelData);
+                CheckGroupOverflow(group);
                 --channelData.BurstRecords;
                 return;
             }
