@@ -1,3 +1,11 @@
+wb-mqtt-db (2.11.1) stable; urgency=medium
+
+  * Update LICENSE: Automation Technologies, LLC (Wiren Board) as the copyright holder,
+    2014 as the first publication year, use restricted to Wiren Board equipment
+  * Fill debian/copyright in the DEP-5 format
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 12 Nov 2026 14:40:07 +0300
+
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
   * Use system-wide sqlitecpp
