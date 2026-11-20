@@ -1,3 +1,12 @@
+wb-mqtt-db (2.11.1) stable; urgency=medium
+
+  * Fix crash on min_interval = 0 with max_burst > 0
+  * Fix 100% CPU usage on min_unchanged_interval = 0
+  * Allow only integer values for min_interval, min_unchanged_interval and max_burst
+    in config schema, fractional values prevented the service from starting
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 20 Nov 2026 19:59:00 +0400
+
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
   * Use system-wide sqlitecpp
