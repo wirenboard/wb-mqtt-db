@@ -128,7 +128,7 @@
                     },
 
                     "min_interval": {
-                        "type": "number",
+                        "type": "integer",
                         "title": "DB write period while publishing changing values (s)",
                         "group": "write_periods",
                         "propertyOrder": 5,
@@ -140,7 +140,7 @@
                     },
 
                     "min_unchanged_interval": {
-                        "type": "number",
+                        "type": "integer",
                         "title": "DB write period while publishing identical values (s)",
                         "group": "write_periods",
                         "propertyOrder": 6,
@@ -152,7 +152,7 @@
                     },
 
                     "max_burst": {
-                        "type": "number",
+                        "type": "integer",
                         "title": "Maximum burst records count",
                         "description": "max_burst_description",
                         "group": "write_options",

@@ -269,7 +269,11 @@ void TMQTTDBLogger::Start()
         queue<TValueFromMqtt> localQueue;
         {
             std::unique_lock<std::mutex> lk(Mutex);
-            if (MessagesQueue.empty()) {
+            if (MessagesQueue.empty() && nextSaveTime == NO_SCHEDULED_SAVE) {
+                if (Active) {
+                    WakeupCondition.wait(lk);
+                }
+            } else if (MessagesQueue.empty()) {
                 auto duration = duration_cast<milliseconds>(nextSaveTime - steady_clock::now());
                 if (duration.count() > 0) {
                     WakeupCondition.wait_for(lk, duration + milliseconds(1));
@@ -694,16 +698,18 @@ steady_clock::time_point TMqttDbLoggerMessageHandler::Store(steady_clock::time_p
             group.LastUSaved = currentTime;
         }
 
-        if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
-            group.LastUSaved = group.LastUSaved + group.UnchangedInterval;
-        }
+        if (group.UnchangedInterval.count() > 0) {
+            if (currentTime >= group.LastUSaved + group.UnchangedInterval) {
+                group.LastUSaved = group.LastUSaved + group.UnchangedInterval;
+            }
 
-        next.Update(group.LastUSaved + group.UnchangedInterval);
+            next.Update(group.LastUSaved + group.UnchangedInterval);
+        }
     }
 
     Storage.Commit();
 
-    return next.Time;
+    return next.IsEmpty ? NO_SCHEDULED_SAVE : next.Time;
 }
 
 void TMqttDbLoggerMessageHandler::ProcessMessages(std::queue<TValueFromMqtt>& messages,
@@ -777,7 +783,7 @@ void TMqttDbLoggerMessageHandler::UpdateBurstRecordsCount(const TLoggingGroup& g
                                                           TChannel& channel,
                                                           steady_clock::time_point currentTime)
 {
-    if (!channel.HasUnsavedMessages && group.MaxBurstRecords > 0) {
+    if (!channel.HasUnsavedMessages && group.MaxBurstRecords > 0 && group.ChangedInterval.count() > 0) {
         int newBurstRecords = duration_cast<seconds>(currentTime - channel.LastSaved) / group.ChangedInterval;
         if (group.MaxBurstRecords <= newBurstRecords) {
             newBurstRecords = group.MaxBurstRecords;

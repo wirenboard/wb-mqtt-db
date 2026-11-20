@@ -183,6 +183,9 @@ private:
     std::chrono::seconds GetValuesRpcRequestTimeout;
 };
 
+//! Returned by TMqttDbLoggerMessageHandler::HandleMessages if no save is scheduled by timeout
+constexpr std::chrono::steady_clock::time_point NO_SCHEDULED_SAVE = std::chrono::steady_clock::time_point::max();
+
 class TMqttDbLoggerMessageHandler
 {
 public:
@@ -193,7 +196,8 @@ public:
     /**
      * @brief Store messages or average values for next call
      *
-     * @return next time to call HandleMessages
+     * @return next time to call HandleMessages or NO_SCHEDULED_SAVE if it should be called
+     *         only on a new message
      */
     std::chrono::steady_clock::time_point HandleMessages(std::queue<TValueFromMqtt>& messages,
                                                          std::chrono::steady_clock::time_point currentTime,
