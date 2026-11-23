@@ -805,3 +805,117 @@ TEST_F(TDBLoggerTest, several_unchanged)
     // save by UnchangedInterval = 6000 ms
     StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(9000), handler);
 }
+
+TEST_F(TDBLoggerTest, zero_min_interval)
+{
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval = seconds(0);
+    group.UnchangedInterval = seconds(3);
+    group.MaxBurstRecords = 3;
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime = steadyTime;
+
+    std::queue<TValueFromMqtt> messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
+    // steadyTime: 0 ms
+    // changed value is saved immediately
+    // next save by UnchangedInterval = 3000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    // steadyTime: 1000 ms
+    // no new messages, burst records are not calculated with zero ChangedInterval
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    systemTime += milliseconds(100);
+    steadyTime += milliseconds(100);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    // steadyTime: 1100 ms
+    // changed value is saved immediately
+    // next save by UnchangedInterval = 3000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+
+    systemTime += milliseconds(100);
+    steadyTime += milliseconds(100);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    // steadyTime: 1200 ms
+    // unchanged value is not saved before UnchangedInterval
+    // next save by UnchangedInterval = 3000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(3000), handler);
+    ASSERT_EQ(cache.Groups[0].Channels.begin()->second.BurstRecords, 0);
+
+    // steadyTime: 3000 ms
+    // Vin: last save = 1100 ms, unchanged value is still not saved
+    // next save by UnchangedInterval = 6000 ms
+    StoreByTimeout(systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(6000), handler);
+}
+
+TEST_F(TDBLoggerTest, zero_min_unchanged_interval)
+{
+    TLoggerCache cache;
+
+    TLoggingGroup group;
+    group.ChangedInterval = seconds(2);
+    group.UnchangedInterval = seconds(0);
+    group.ControlPatterns.push_back({"+", "+"});
+    group.Name = "all";
+    cache.Groups.push_back(group);
+
+    TFakeStorage storage(*this);
+
+    auto systemTime = system_clock::now();
+    auto steadyTime = steady_clock::now();
+    auto startSteadyTime = steadyTime;
+    auto nextSaveTime = steadyTime;
+
+    std::queue<TValueFromMqtt> messages;
+    TMqttDbLoggerMessageHandler handler(cache, storage, std::make_unique<TFakeChannelWriter>(*this, systemTime));
+    handler.Start(startSteadyTime);
+
+    messages.push({{"wb-adc", "Vin"}, "12.000", "", 0.0, systemTime});
+    // steadyTime: 0 ms
+    // changed value is saved immediately
+    // nothing is scheduled, the handler must not be called until a new message
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
+    ASSERT_EQ(nextSaveTime, NO_SCHEDULED_SAVE);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    // steadyTime: 1000 ms
+    // Vin: last save = 0 ms
+    // next save by ChangedInterval = 2000 ms
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, milliseconds(2000), handler);
+
+    systemTime += milliseconds(1000);
+    steadyTime += milliseconds(1000);
+    // steadyTime: 2000 ms
+    // save by ChangedInterval = 2000 ms
+    // nothing is scheduled
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
+    ASSERT_EQ(nextSaveTime, NO_SCHEDULED_SAVE);
+
+    systemTime += milliseconds(500);
+    steadyTime += milliseconds(500);
+    messages.push({{"wb-adc", "Vin"}, "13.000", "", 0.0, systemTime});
+    // steadyTime: 2500 ms
+    // unchanged value is saved immediately
+    // nothing is scheduled
+    StoreByMessage(messages, systemTime, steadyTime, startSteadyTime, nextSaveTime, handler);
+    ASSERT_EQ(nextSaveTime, NO_SCHEDULED_SAVE);
+}
