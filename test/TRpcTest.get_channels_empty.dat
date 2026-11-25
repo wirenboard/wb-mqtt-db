@@ -1,0 +1,9 @@
+Register RPC history get_values
+Register RPC history get_channels
+RPC call get_channels
+Arguments
+{"id":1}
+Response
+{
+  "channels" : {}
+}

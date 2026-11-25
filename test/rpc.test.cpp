@@ -18,6 +18,8 @@ namespace
         PChannelInfo A1Channel;
 
     public:
+        bool NoChannels = false;
+
         TFakeStorage(WBMQTT::Testing::TLoggedFixture& fixture): Fixture(fixture), Id(0)
         {
             VinChannel = TFakeStorage::CreateChannel({"wb-adc", "Vin"});
@@ -105,6 +107,10 @@ namespace
 
         void GetChannels(IChannelVisitor& visitor) override
         {
+            if (NoChannels) {
+                return;
+            }
+
             tm dt;
             memset(&dt, 0, sizeof(tm));
 
@@ -227,6 +233,17 @@ TEST_F(TRpcTest, get_channels)
     TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
     TFakeMqttRpcServer rpc(*this);
     TFakeStorage storage(*this);
+    TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
+    handler.Register(rpc);
+    rpc.CallRpc("get_channels", "{\"id\":1}");
+}
+
+TEST_F(TRpcTest, get_channels_empty)
+{
+    TLoggerCache cache(LoadConfig(testRootDir + "/wb-mqtt-db.conf", schemaFile).Cache);
+    TFakeMqttRpcServer rpc(*this);
+    TFakeStorage storage(*this);
+    storage.NoChannels = true;
     TMQTTDBLoggerRpcHandler handler(cache, storage, std::chrono::seconds(5));
     handler.Register(rpc);
     rpc.CallRpc("get_channels", "{\"id\":1}");
