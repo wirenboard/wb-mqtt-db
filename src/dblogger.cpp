@@ -360,6 +360,11 @@ class TJsonChannelsVisitor: public IChannelVisitor
 public:
     Json::Value Root;
 
+    TJsonChannelsVisitor()
+    {
+        Root["channels"] = Json::Value(Json::objectValue);
+    }
+
     void ProcessChannel(PChannelInfo channel) override
     {
         Json::Value values;
