@@ -1,10 +1,26 @@
-wb-mqtt-db (2.11.1) stable; urgency=medium
+wb-mqtt-db (2.11.3) stable; urgency=medium
 
   * Update LICENSE: Wiren Board as the copyright holder,
     2014 as the first publication year, use restricted to Wiren Board equipment
   * Fill debian/copyright in the DEP-5 format
 
- -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 12 Nov 2026 14:40:07 +0300
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 26 Nov 2026 18:14:04 +0300
+
+wb-mqtt-db (2.11.2) stable; urgency=medium
+
+  * Fix get_channels RPC returning null instead of empty "channels" object
+    when the database has no channels
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 25 Nov 2026 14:50:33 +0400
+
+wb-mqtt-db (2.11.1) stable; urgency=medium
+
+  * Fix crash on min_interval = 0 with max_burst > 0
+  * Fix 100% CPU usage on min_unchanged_interval = 0
+  * Allow only integer values for min_interval, min_unchanged_interval and max_burst
+    in config schema, fractional values prevented the service from starting
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 20 Nov 2026 19:59:00 +0400
 
 wb-mqtt-db (2.11.0) stable; urgency=medium
 
