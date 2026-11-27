@@ -1,3 +1,11 @@
+wb-mqtt-db (2.11.3) stable; urgency=medium
+
+  * Update LICENSE: Wiren Board as the copyright holder,
+    2014 as the first publication year, use restricted to Wiren Board equipment
+  * Fill debian/copyright in the DEP-5 format
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 26 Nov 2026 18:14:04 +0300
+
 wb-mqtt-db (2.11.2) stable; urgency=medium
 
   * Fix get_channels RPC returning null instead of empty "channels" object
